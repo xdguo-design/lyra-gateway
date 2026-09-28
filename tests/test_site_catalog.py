@@ -19,12 +19,37 @@ async def test_fetch_public_catalog_reads_freellm_json_without_secrets():
 
 def test_model_offers_keeps_api_and_open_weight_resources():
     offers = [
-        {"id": "api", "productType": "api"},
-        {"id": "weights", "productType": "open_weights"},
+        {
+            "id": "api",
+            "productType": "api",
+            "originCountry": "China",
+            "providerRegion": "CN",
+        },
+        {
+            "id": "weights",
+            "productType": "open_weights",
+            "originCountry": "International",
+            "provider_region": "US",
+        },
         {"id": "ide", "productType": "free_ide"},
     ]
 
-    assert [item["id"] for item in model_offers(offers)] == ["api", "weights"]
+    result = model_offers(offers)
+
+    assert [item["id"] for item in result] == ["api", "weights"]
+    assert result[0]["model_origin"] == "CN"
+    assert result[0]["provider_region"] == "CN"
+    assert result[1]["model_origin"] == "INTL"
+    assert result[1]["provider_region"] == "US"
+
+
+def test_model_offers_does_not_infer_provider_region_from_model_origin():
+    result = model_offers([
+        {"id": "global", "productType": "api", "originCountry": "Global"},
+    ])
+
+    assert result[0]["model_origin"] == "INTL"
+    assert result[0]["provider_region"] == "UNKNOWN"
 
 
 @pytest.mark.asyncio

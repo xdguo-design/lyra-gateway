@@ -13,6 +13,28 @@ PUBLIC_FIELDS = (
 )
 MODEL_PRODUCT_TYPES = {"api", "open_weights", "payg", "free_model", "model_api"}
 
+_CHINA_ORIGINS = {"cn", "china", "mainland china", "prc", "中国", "中国大陆"}
+_INTERNATIONAL_ORIGINS = {"intl", "international", "global", "worldwide", "overseas"}
+_UNKNOWN_ORIGINS = {"", "unknown", "n/a", "na", "-", "未知"}
+
+
+def _normalize_region(value: object) -> str:
+    if not isinstance(value, str):
+        return "UNKNOWN"
+    raw = value.strip()
+    normalized = raw.casefold()
+    if normalized in _CHINA_ORIGINS:
+        return "CN"
+    if normalized in _INTERNATIONAL_ORIGINS:
+        return "INTL"
+    if normalized in _UNKNOWN_ORIGINS:
+        return "UNKNOWN"
+    if len(raw) == 2 and raw.isalpha():
+        return raw.upper()
+    # freellm.top currently distinguishes China from international/global origins.
+    # Any other explicit origin is kept on the international side of that coarse split.
+    return "INTL"
+
 
 async def fetch_public_catalog(
     source_url: str,
@@ -45,5 +67,12 @@ def model_offers(offers: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         capabilities = set(offer.get("capabilities") or [])
         if product_type not in MODEL_PRODUCT_TYPES and not capabilities.intersection({"model_api", "open_weights"}):
             continue
-        result.append({field: offer[field] for field in PUBLIC_FIELDS if field in offer})
+        item = {field: offer[field] for field in PUBLIC_FIELDS if field in offer}
+        item["model_origin"] = _normalize_region(
+            offer.get("model_origin") or offer.get("originCountry")
+        )
+        item["provider_region"] = _normalize_region(
+            offer.get("provider_region") or offer.get("providerRegion")
+        )
+        result.append(item)
     return sorted(result, key=lambda item: (item.get("order", 10**9), item.get("id", "")))
