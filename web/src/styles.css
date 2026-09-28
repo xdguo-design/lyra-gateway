@@ -308,33 +308,35 @@ td b { color: #163264; }
 .metric-copy small { display: block; color: #7a8eb5; margin-top: 5px; font-size: 10px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .metric-arrow { justify-self: end; color: #245cb8 !important; font-size: 22px !important; line-height: 1; }
 
-.overview-grid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(420px,.9fr); gap: 12px; }
-.api-card { min-height: 288px; }
-.routing-card { min-height: 264px; padding-top: 15px; padding-bottom: 14px; }
-.section-head.compact { margin-bottom: 12px; }
+.overview-grid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(420px,.9fr); gap: 12px; align-items: stretch; }
+.api-card, .routing-card { min-height: 264px; padding-top: 15px; padding-bottom: 14px; }
+.api-card { display: flex; flex-direction: column; }
+.section-head.compact { margin-bottom: 10px; }
+.api-card .section-head.compact { margin-bottom: 8px; }
+.api-card .section-head.compact p { margin-top: 3px; font-size: 10.5px; line-height: 1.35; }
 .section-head h2 { display: flex; align-items: center; gap: 9px; }
 .section-arrow { color: #245cb8; font-size: 26px; line-height: 1; }
 .section-icon { width: 31px; height: 31px; display: inline-grid; place-items: center; border-radius: 9px; background: #eaf3ff; color: #2072f1; font-size: 16px; }
 .section-icon.route { background: #eef2ff; color: #5f72f4; }
 .section-icon.bars { background: #eaf3ff; color: #2677f5; }
-.endpoint-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.endpoint-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 7px; }
 .endpoint-item {
-  min-width: 0; min-height: 56px; display: flex; align-items: center; justify-content: space-between; gap: 9px;
-  padding: 8px 9px 8px 12px; border: 1px solid #dfebf8; background: #f8fbff; border-radius: 10px;
+  min-width: 0; min-height: 48px; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 6px 8px 6px 10px; border: 1px solid #dfebf8; background: #f8fbff; border-radius: 9px;
 }
-.endpoint-item > div { min-width: 0; display: grid; gap: 4px; }
-.endpoint-item span { color: #60759f; font-size: 11px; }
-.endpoint-item code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #244b85; font-size: 11px; }
-.copy-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; padding: 6px 8px; color: #294b83; background: #fff; border-radius: 8px; font-size: 10px; }
+.endpoint-item > div { min-width: 0; display: grid; gap: 2px; }
+.endpoint-item span { color: #60759f; font-size: 10px; line-height: 1.2; }
+.endpoint-item code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #244b85; font-size: 10px; line-height: 1.25; }
+.copy-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 4px; padding: 4px 7px; min-height: 28px; color: #294b83; background: #fff; border-radius: 7px; font-size: 9.5px; }
 .auth-row {
-  margin-top: 8px; min-height: 40px; display: flex; align-items: center; gap: 9px;
-  padding: 7px 10px; border: 1px solid #dce9f8; background: #f8fbff; border-radius: 10px;
+  margin-top: 7px; min-height: 36px; display: flex; align-items: center; gap: 8px;
+  padding: 5px 8px; border: 1px solid #dce9f8; background: #f8fbff; border-radius: 9px;
 }
-.auth-copy { min-width: 0; display: flex; align-items: center; gap: 7px; flex: 1; }
-.auth-copy > span:not(.auth-icon) { color: #60759f; font-size: 11px; white-space: nowrap; }
-.auth-copy code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 10px; }
-.auth-icon { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; color: #245ed4; background: #eaf2ff; }
-.docs-link { margin-left: auto; color: #f04f43; font-size: 11px; white-space: nowrap; text-decoration: none; }
+.auth-copy { min-width: 0; display: flex; align-items: center; gap: 6px; flex: 1; }
+.auth-copy > span:not(.auth-icon) { color: #60759f; font-size: 10px; white-space: nowrap; }
+.auth-copy code { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 9.5px; }
+.auth-icon { width: 22px; height: 22px; border-radius: 6px; display: grid; place-items: center; color: #245ed4; background: #eaf2ff; }
+.docs-link { margin-left: auto; color: #f04f43; font-size: 10px; white-space: nowrap; text-decoration: none; }
 
 .routing-card .section-head.compact { margin-bottom: 8px; }
 .auto-routing-flow { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr; align-items: start; gap: 3px; padding: 4px 0 6px; }
