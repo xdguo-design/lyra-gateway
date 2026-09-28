@@ -75,7 +75,7 @@ export default function App() {
   else if (view === "routing") page = <RoutingPage routes={routes} />;
   else if (view === "catalog") page = <CatalogPage />;
   else if (view === "settings") page = <SettingsPage overview={overview} tenants={tenants} applications={applications} onRefresh={refresh} />;
-  else page = <OverviewPage overview={overview} routes={routes} providers={providers} connections={connections} />;
+  else page = <OverviewPage overview={overview} routes={routes} providers={providers} connections={connections} onRefresh={() => void refresh()} />;
 
   return (
     <Shell view={view} onView={changeView} online={online} onRefresh={() => void refresh()} token={token} onToken={changeToken}>
