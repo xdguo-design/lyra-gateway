@@ -254,9 +254,9 @@ td b { color: #163264; }
   --overview-border: #d8e6f5;
   --overview-radius: 12px;
   --overview-shadow: 0 7px 22px rgba(45, 93, 155, .065);
-  --overview-hero-height: 156px;
-  --overview-stat-height: 90px;
-  --overview-panel-height: 258px;
+  --overview-hero-height: clamp(152px, 17vh, 160px);
+  --overview-stat-height: clamp(88px, 10vh, 94px);
+  --overview-panel-height: clamp(262px, 31vh, 292px);
   gap: var(--overview-section-gap);
   width: 100%;
 }
@@ -395,7 +395,16 @@ td b { color: #163264; }
 .auto-routing-flow i { align-self: center; color: #3e7df0; font-style: normal; font-size: 17px; line-height: 1; margin-top: 14px; }
 .route-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 1px; padding: 6px 9px; border-radius: 9px; background: #edf6ff; color: #56739d; font-size: 9.5px; line-height: 1.3; }
 
-.recent-card { padding-bottom: 10px; }
+.recent-card {
+  min-height: 300px;
+  padding-bottom: 10px;
+  border-color: var(--overview-border);
+  border-radius: var(--overview-radius);
+  box-shadow: var(--overview-shadow);
+}
+@media (min-width: 1161px) and (min-height: 820px) {
+  .recent-card { min-height: 320px; }
+}
 .recent-head { align-items: center; }
 .recent-actions { display: flex; gap: 8px; align-items: center; }
 .range-switch { display: inline-flex; align-items: center; padding: 2px; border: 1px solid #d6e5f7; background: #f8fbff; border-radius: 9px; }
@@ -406,8 +415,10 @@ td b { color: #163264; }
   .app-shell { grid-template-columns: 230px minmax(0,1fr); }
   .top-action-button { padding-inline: 12px; }
   .service { display: none; }
+}
+@media (max-width: 1160px) {
   .overview-grid { grid-template-columns: 1fr; }
-  .routing-card { min-height: auto; }
+  .api-card, .routing-card { height: auto; min-height: 0; }
 }
 @media (max-width: 1100px) {
   .overview-stats { grid-template-columns: repeat(2,minmax(0,1fr)); }
