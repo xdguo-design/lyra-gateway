@@ -292,16 +292,21 @@ td b { color: #163264; }
 .cube-c { right: 26px; top: 56px; width: 42px; height: 42px; }
 .cube-d { right: 164px; bottom: 2px; width: 24px; height: 24px; }
 
-.overview-stat { min-height: 100px; display: grid; grid-template-columns: 52px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 14px; }
-.metric-icon { width: 48px; height: 48px; display: grid; place-items: center; border-radius: 12px; font-size: 23px !important; font-weight: 700; }
+.overview-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.overview-stat {
+  min-width: 0; min-height: 94px; display: grid;
+  grid-template-columns: 46px minmax(0,1fr) 18px; align-items: center;
+  gap: 10px; padding: 12px 13px; border-radius: 12px;
+}
+.metric-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 11px; font-size: 21px !important; font-weight: 700; }
 .metric-icon.blue { color: #2472ed; background: linear-gradient(135deg,#edf6ff,#dcecff); }
 .metric-icon.green { color: #08bd7f; background: linear-gradient(135deg,#effff9,#d8faec); }
 .metric-icon.violet { color: #765af4; background: linear-gradient(135deg,#f3f0ff,#e6e0ff); }
-.metric-copy { min-width: 0; }
-.metric-copy b { display: inline-block; margin: 0 7px 0 0; font-size: 26px; line-height: 1; color: #12245b; vertical-align: middle; }
-.metric-copy > span { display: inline-block; color: #20376d; font-weight: 650; font-size: 14px; vertical-align: middle; }
-.metric-copy small { display: block; color: #7a8eb5; margin-top: 6px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.metric-arrow { color: #245cb8 !important; font-size: 26px !important; }
+.metric-copy { min-width: 0; line-height: 1.05; }
+.metric-copy b { display: inline-block; margin: 0 6px 0 0; font-size: 24px; line-height: .95; color: #12245b; vertical-align: middle; letter-spacing: -.025em; }
+.metric-copy > span { display: inline-block; color: #20376d; font-weight: 650; font-size: 13px; vertical-align: middle; }
+.metric-copy small { display: block; color: #7a8eb5; margin-top: 5px; font-size: 10px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.metric-arrow { justify-self: end; color: #245cb8 !important; font-size: 22px !important; line-height: 1; }
 
 .overview-grid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(420px,.9fr); gap: 12px; }
 .api-card, .routing-card { min-height: 288px; }
