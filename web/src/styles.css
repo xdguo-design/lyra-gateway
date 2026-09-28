@@ -84,6 +84,17 @@ label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
 .candidate { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 5px; padding: 7px 0; border-top: 1px solid var(--line); }
 .candidate small { grid-column: 2; color: var(--muted); }
 .search { margin-bottom: 14px; }
+.catalog-toolbar { display: grid; gap: 10px; margin-bottom: 14px; }
+.catalog-toolbar .search { margin-bottom: 0; }
+.catalog-origin-tabs { display: inline-flex; width: max-content; max-width: 100%; padding: 2px; border: 1px solid var(--line); background: #091529; border-radius: 10px; }
+.catalog-origin-tabs button { border: 0; background: transparent; color: var(--muted); }
+.catalog-origin-tabs button.active { background: #244d91; color: white; }
+.catalog-filter-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.catalog-result-count { color: var(--muted); font-size: 11px; }
+.catalog-card-badges { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.region-domestic { color: #8bf0c8; border-color: #24765d !important; background: #102c28 !important; }
+.region-international { color: #a9c9ff; border-color: #36547e !important; background: #13233d !important; }
+.region-unknown { color: #aab7cc; }
 .provider-card code { font-size: 10px; }
 .provider-models { display: grid; max-height: 180px; overflow: auto; margin: 8px 0 12px; }
 .provider-models > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
@@ -111,6 +122,6 @@ label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
   .topbar { align-items: flex-start; flex-direction: column; }
   .top-actions { width: 100%; }
   .token-field { flex: 1; min-width: 180px; }
-  .grid-two, .stat-grid, .stat-grid.six, .form-grid, .filter-grid, .quota-editor, .provider-fields { grid-template-columns: 1fr; }
+  .grid-two, .stat-grid, .stat-grid.six, .form-grid, .filter-grid, .quota-editor, .provider-fields, .catalog-filter-grid { grid-template-columns: 1fr; }
   .provider-fields label:nth-child(4), .provider-fields label:nth-child(5), .full { grid-column: auto; }
 }

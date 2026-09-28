@@ -205,6 +205,9 @@ export interface CatalogOffer {
   validitySummary?: string;
   accessSummary?: string;
   badges?: string[];
+  originCountry?: string;
+  model_origin?: string;
+  provider_region?: string;
   pool_status?: {
     state: "enabled" | "disabled" | "not_added" | string;
     exact: boolean;
