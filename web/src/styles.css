@@ -249,7 +249,22 @@ td b { color: #163264; }
 .routing-flow div, .cap-grid article, .catalog-card, .connection-card, .provider-fields { border-color: #dbe8f8; background: #f8fbff; }
 .check-grid label { color: #10245b; border-color: #dbe8f8; background: #fff; }
 
-.overview-stack { gap: 12px; }
+.overview-stack {
+  --overview-section-gap: 10px;
+  gap: var(--overview-section-gap);
+  width: 100%;
+}
+.overview-stack > section {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+}
+.overview-hero,
+.overview-stats,
+.overview-grid {
+  width: 100%;
+  margin-inline: 0;
+}
 .overview-hero {
   min-height: 160px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: space-between;
   border: 1px solid #cfe7fb; border-radius: 14px; padding: 20px 32px;
@@ -292,7 +307,16 @@ td b { color: #163264; }
 .cube-c { right: 26px; top: 56px; width: 42px; height: 42px; }
 .cube-d { right: 164px; bottom: 2px; width: 24px; height: 24px; }
 
-.overview-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.overview-stats {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 10px;
+  row-gap: var(--overview-section-gap);
+  padding: 0;
+}
+.overview-stats > .overview-stat {
+  width: 100%;
+  margin: 0;
+}
 .overview-stat {
   min-width: 0; min-height: 94px; display: grid;
   grid-template-columns: 46px minmax(0,1fr) 18px; align-items: center;
@@ -308,7 +332,19 @@ td b { color: #163264; }
 .metric-copy small { display: block; color: #7a8eb5; margin-top: 5px; font-size: 10px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .metric-arrow { justify-self: end; color: #245cb8 !important; font-size: 22px !important; line-height: 1; }
 
-.overview-grid { display: grid; grid-template-columns: minmax(0,1.35fr) minmax(420px,.9fr); gap: 12px; align-items: stretch; }
+.overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0,1.35fr) minmax(420px,.9fr);
+  column-gap: 12px;
+  row-gap: var(--overview-section-gap);
+  align-items: stretch;
+  padding: 0;
+}
+.overview-grid > .card {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
 .api-card, .routing-card { min-height: 264px; padding-top: 15px; padding-bottom: 14px; }
 .api-card { display: flex; flex-direction: column; }
 .section-head.compact { margin-bottom: 10px; }
