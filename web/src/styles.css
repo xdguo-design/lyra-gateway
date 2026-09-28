@@ -415,6 +415,7 @@ td b { color: #163264; }
 }
 @media (max-width: 860px) {
   .app-shell { display: block; }
+  .api-card, .routing-card { height: auto; min-height: 0; }
   .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid #dbe8f8; padding-bottom: 14px; }
   .brand-row { padding-bottom: 14px; }
   .sidebar nav { grid-template-columns: repeat(3,1fr); }
