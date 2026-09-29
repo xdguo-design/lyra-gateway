@@ -1,6 +1,14 @@
-# FreeLLM Gateway
+# 智能底座 · FreeLLM Gateway
 
-本地运行的多 Provider 模型网关，提供 OpenAI 兼容接口和 FreeLLM Studio 桌面控制台。
+FreeLLM Gateway 是智能底座的模型接入与运行核心：统一管理多个 Provider 和模型，通过兼容 API、基础路由与故障切换，为本地应用和研发团队提供可自托管的 AI Gateway。Agent、工具、知识与工作流是产品路线图，不代表当前仓库已提供这些能力。
+
+> 当前产品以自托管 / 单实例为主。下方“现有能力”只描述仓库当前具备的行为；“路线图”标注规划方向。多租户隔离、完整调用方 Key 管理和 Agent OS 能力需要按路线图另行交付。
+
+## 产品文档
+
+- [智能底座 PRD](docs/product/SMART_BASE_PRD.md)：定位、用户故事、P0/P1/P2 范围和验收标准。
+- [测试计划](docs/testing/SMART_BASE_TEST_PLAN.md)：端到端验收矩阵、测试方法和阶段状态。
+- [管理台首页原型](docs/prototypes/smart-base/prototype.html)：Trace Map 交互原型（演示数据，不连接后端）；[视觉方向比较页](docs/prototypes/smart-base/index.html)。
 
 ![FreeLLM Studio](docs/screenshots/freellm-studio-overview.png)
 
@@ -46,17 +54,35 @@ python -m freellm_gateway run --open-browser
 
 wheel 已包含 React 管理后台，**运行时不需要 Node.js**。
 
+## 当前能力
+
+| 能力 | 当前状态 |
+|---|---|
+| Provider 与模型连接管理、模型发现和探测 | 已支持 |
+| OpenAI 兼容模型、聊天和生图入口 | 已支持；具体参数与模态以当前接口为准 |
+| 按模型能力、健康状态和优先级路由 | 已支持基础策略 |
+| 上游线路失败切换 | 已支持基础 Fallback；高级策略和错误治理仍在路线图中 |
+| Provider 凭据保护 | 桌面端使用系统凭据存储，云端使用加密持久文件；不会通过目录导出或接口响应回显明文 |
+| Usage、配额、Tenant / App | 有基础统计与配置能力；完整租户隔离、调用方 Key 生命周期和成本治理尚未完成 |
+| 健康和请求记录 | 有基础健康检查与连接记录；完整 Trace、错误聚合和告警尚未完成 |
+| FreeLLM Studio 桌面控制台 | Windows 桌面版可自动启动本地网关 |
+
+## 路线图
+
+- **P0：统一调用闭环**：多 Provider 调用、基础 Fallback、Usage/请求记录和密钥保护。
+- **P1：多租户运营**：调用方 Key、配额与成本、Tenant / App 治理、高级路由、告警和完整 Trace。
+- **P2：Agent 能力平台**：Agent、Tools、Skills、Workflow、Knowledge、Memory 和 Evaluation。
+
+路线图不代表当前版本承诺或已实现能力；具体阶段按 PRD 验收后更新本表。
+
 ## 功能
 
-- 统一管理多个 Provider 和模型
 - 从 Provider API 获取多个模型，一次性批量加入模型池
 - 每个模型独立启用、停用、探测、删除和调整优先级
-- `auto` 模式按优先级、能力和健康状态自动路由，并支持失败切换
 - 支持文本、长上下文、视觉和生图能力标签
-- 从 `freellm.top` 目录自动带出 Provider、注册地址、文档和免费额度说明
-- 管理台支持同时选择多个连接，并为每个连接分别验证凭据、选择模型后批量保存
-- Provider API Key 在桌面端使用系统凭据存储，在云端使用加密持久文件；均不写入目录导出或接口响应
-- Windows 桌面版启动时自动运行本地网关，不弹出 CMD 窗口
+- 从 `freellm.top` 目录带出 Provider、注册地址、文档和额度说明
+- 管理台支持批量选择多个连接，分别验证凭据、选择模型后批量保存
+- Windows 桌面版启动时自动运行网关，不弹出 CMD 窗口
 
 ## 桌面版
 

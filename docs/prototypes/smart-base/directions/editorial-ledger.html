@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>智能底座 · Ledger 方向</title>
+  <link rel="stylesheet" href="../shared.css"><link rel="stylesheet" href="ledger.css">
+</head>
+<body><div class="shell">
+  <aside class="rail"><div class="brand"><span class="brandmark">L</span><span>智能底座<small>FreeLLM Gateway</small></span></div><p class="nav-label">工作台</p><nav><a class="current" href="#"><b>01</b> 总览</a><a href="#"><b>02</b> Provider</a><a href="#"><b>03</b> 模型路由</a><a href="#"><b>04</b> 用量与配额</a><a href="#"><b>05</b> 请求记录</a><a href="#"><b>06</b> 系统设置</a></nav><div class="rail-foot">自托管 · 本地控制台<br>服务状态：正常</div></aside>
+  <main><header class="top"><span class="crumb">智能底座　/　运行记录</span><div class="top-actions"><span class="demo-tag">演示数据 · 不连接后端</span><button class="outline-button">本月⌄</button><button class="solid-button">新增连接</button></div></header>
+    <section class="intro"><div><span class="eyebrow">PLATFORM REGISTER / 2026.09</span><h1>把每一次调用记清楚。</h1><p class="sub">从线路、结果到用量，平台的状态应该一眼可核。</p></div><span class="period">周一，9 月 29 日</span></section>
+    <section class="metrics"><div class="metric"><label>活动线路</label><strong>06 / 08</strong><small>2 条需要复核</small></div><div class="metric"><label>启用模型</label><strong>18</strong><small>4 类能力</small></div><div class="metric"><label>今日请求</label><strong>1,284</strong><small>较前一日 +8.2%</small></div><div class="metric"><label>成功率</label><strong>98.6%</strong><small>含备用线路成功</small></div><div class="metric"><label>Token 记录</label><strong>2.3M</strong><small>上游报告值</small></div><div class="metric"><label>成本估算</label><strong>¥23.40</strong><small>非最终账单</small></div></section>
+    <div class="layout"><section class="section"><div class="section-head"><h2>连接簿</h2><span>08 个 Provider　·　更新时间 14:08</span></div><div class="provider-list">
+      <div class="provider"><div class="provider-name">DeepSeek<small>主线路 · deepseek-prod</small></div><span class="health"><i></i>稳定</span><span class="latency">420 ms</span><span class="models">4 模型</span></div>
+      <div class="provider"><div class="provider-name">SiliconFlow<small>备用线路 · east</small></div><span class="health"><i></i>稳定</span><span class="latency">680 ms</span><span class="models">6 模型</span></div>
+      <div class="provider"><div class="provider-name">Gemini<small>原生协议 · global</small></div><span class="health"><i></i>稳定</span><span class="latency">790 ms</span><span class="models">3 模型</span></div>
+      <div class="provider"><div class="provider-name">OpenRouter<small>聚合线路 · us</small></div><span class="health warn"><i></i>限流升高</span><span class="latency">1,240 ms</span><span class="models">5 模型</span></div>
+      <div class="provider"><div class="provider-name">Qwen<small>企业线路 · cn</small></div><span class="health warn"><i></i>待检查</span><span class="latency">—</span><span class="models">2 模型</span></div>
+    </div></section>
+    <aside class="section"><div class="section-head"><h2>值班札记</h2><span>2 项</span></div><div class="alerts"><article class="alert"><div class="alert-head"><b>凭据需要更新</b><span class="severity">P0</span></div><p>Qwen 最近探测未通过。轮换凭据后再恢复模型路由。</p></article><article class="alert"><div class="alert-head"><b>备用线路正在承压</b><span class="severity medium">P1</span></div><p>OpenRouter 在 30 分钟内返回 14 次限流响应。</p></article></div><div class="route-box"><h3>一条请求的去向</h3><div class="route-line"><span class="route-node">smart-chat</span><span>›</span><span class="route-node">DeepSeek · 限流</span><span>›</span><span class="route-node selected">SiliconFlow · 返回成功</span></div><p class="route-note">因为主线路限流，按备用顺序切换。记录耗时：812 ms。</p></div></aside></div>
+    <section class="section table-section"><div class="section-head"><h2>近期调用</h2><span>按时间倒序　→</span></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>请求</th><th>应用</th><th>Provider / 模型</th><th>状态</th><th>Tokens</th></tr></thead><tbody><tr><td>14:08:32</td><td><code>req_…a91f</code></td><td>support-assistant</td><td>SiliconFlow · smart-chat</td><td class="result">备用成功</td><td>1,842</td></tr><tr><td>14:06:10</td><td><code>req_…a91e</code></td><td>doc-search</td><td>Qwen · qwen-plus</td><td class="result fail">鉴权失败</td><td>—</td></tr><tr><td>14:02:55</td><td><code>req_…a91d</code></td><td>code-review</td><td>DeepSeek · deepseek-v3</td><td class="result">成功</td><td>3,120</td></tr></tbody></table></div></section><p class="footer-note">方向 B · Ledger：以编辑式排版和连续表格组织运营信息，突出可追溯、可核对。所有统计均为演示数据。</p>
+  </main></div></body></html>
