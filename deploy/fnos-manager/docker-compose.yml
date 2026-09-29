@@ -1,0 +1,27 @@
+services:
+  fnos-manager:
+    build:
+      context: ../..
+    command:
+      - uvicorn
+      - freellm_gateway.fnos_manager:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "18790"
+    environment:
+      FNOS_MANAGER_TOKEN: ${FNOS_MANAGER_TOKEN:?set FNOS_MANAGER_TOKEN}
+      FNOS_MANAGER_SERVICES_FILE: /etc/fnos-manager/services.json
+      FNOS_MANAGER_AUDIT_FILE: /var/log/fnos-manager/audit.log
+    ports:
+      - "127.0.0.1:18790:18790"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./services.json:/etc/fnos-manager/services.json:ro
+      - ./data:/var/log/fnos-manager
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

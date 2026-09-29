@@ -1,0 +1,19 @@
+{
+  "services": {
+    "openclaw": {
+      "container": "trim-openclaw",
+      "allow_logs": true,
+      "allow_restart": true
+    },
+    "freellm-gateway": {
+      "container": "freellm-gateway",
+      "allow_logs": true,
+      "allow_restart": true
+    },
+    "postgres": {
+      "container": "gateway-postgres",
+      "allow_logs": true,
+      "allow_restart": false
+    }
+  }
+}
