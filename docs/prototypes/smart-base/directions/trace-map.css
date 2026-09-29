@@ -1,0 +1,15 @@
+:root { --canvas:#eef2f5; --rail:#202a33; --ink:#18242b; --quiet:#667783; --rule:#c8d2d8; --accent:#176bd1; --on-accent:#fff; --selected:#d9e7f5; --good:#21745a; --warn:#ae650d; --warn-bg:#f5ead8; --danger:#ad4245; --nav-radius:7px; --button-radius:7px; }
+.rail { color:#eef2f5; }
+.rail .nav-label,.rail nav a { color:#aebdc5; }
+.rail nav a.current { color:#fff; background:#334652; }
+.rail .brand small,.rail .rail-foot { color:#aebdc5; }
+.rail .brandmark { border-radius:9px; color:#a9d2ff; border-color:#5d96d2; }
+.metrics { border:0; gap:10px; }
+.metric { padding:14px 13px; background:#fff; border:1px solid var(--rule); border-radius:7px; }
+.metric + .metric { padding-left:13px; border-left:1px solid var(--rule); }
+.layout { grid-template-columns:minmax(0,1.25fr) minmax(300px,.75fr); }
+.section { padding:0 16px 13px; background:#fff; border:1px solid var(--rule); border-top:3px solid var(--accent); border-radius:7px; }
+.route-box { border-top:1px solid var(--rule); }
+.route-node.selected { background:#e4effa; }
+.section-head { padding-top:14px; }
+@media(max-width:1080px){.layout{grid-template-columns:minmax(0,1fr)}}
