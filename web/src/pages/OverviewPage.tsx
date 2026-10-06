@@ -45,12 +45,12 @@ export function OverviewPage({
 }) {
   const { t, status, locale } = useI18n();
   const [rangeDays, setRangeDays] = useState(1);
-  const capabilityCount = overview?.capabilities?.length ?? new Set(routes.flatMap((route) => route.capabilities)).size;
+  const attentionRoutes = routes.filter((route) => !route.enabled || route.health !== "healthy");
   const stats = [
     { key: "configured", label: t("overview.configured"), value: overview?.configured ?? routes.length, desc: t("overview.configuredDesc"), icon: "◇", tone: "blue" },
     { key: "enabled", label: t("overview.enabled"), value: overview?.enabled ?? routes.filter((item) => item.enabled).length, desc: t("overview.enabledDesc"), icon: "▶", tone: "green" },
     { key: "healthy", label: t("overview.healthy"), value: overview?.healthy ?? routes.filter((item) => item.health === "healthy").length, desc: t("overview.healthyDesc"), icon: "✓", tone: "blue" },
-    { key: "capability", label: t("overview.capabilityCount"), value: capabilityCount, desc: t("overview.capabilityCountDesc"), icon: "⌘", tone: "violet" },
+    { key: "attention", label: t("overview.attentionTitle"), value: attentionRoutes.length, desc: t("overview.attentionDesc"), icon: "!", tone: attentionRoutes.length ? "amber" : "green" },
   ];
   const apiBase = absoluteUrl(overview?.api_base ?? "/v1");
   const modelsUrl = absoluteUrl(overview?.models_url ?? "/v1/models");
@@ -74,19 +74,7 @@ export function OverviewPage({
 
   return (
     <div className="stack overview-stack">
-      <section className="overview-hero">
-        <div className="hero-copy">
-          <h1>{t("nav.overview")}</h1>
-          <p>{t("overview.heroDesc")}</p>
-        </div>
-        <div className="hero-art" aria-hidden="true">
-          <span className="hero-orbit orbit-one" /><span className="hero-orbit orbit-two" />
-          <span className="hero-cube cube-a" /><span className="hero-cube cube-b" /><span className="hero-cube cube-c" /><span className="hero-cube cube-d" />
-          <span className="ai-cube"><b>AI</b></span>
-        </div>
-      </section>
-
-      <section className="stat-grid overview-stats">
+      <section className="stat-grid overview-stats" data-testid="overview-status">
         {stats.map((item) => (
           <article className="card stat overview-stat" key={item.key}>
             <span className={`metric-icon ${item.tone}`}>{item.icon}</span>
@@ -96,8 +84,45 @@ export function OverviewPage({
         ))}
       </section>
 
-      <section className="overview-grid">
-        <article className="card api-card">
+      <section className="card overview-attention" data-testid="model-attention">
+        <div className="section-head"><div><h2>{t("overview.attentionTitle")}</h2><p>{t("overview.attentionDesc")}</p></div>
+          <a className="button-link" href="#/models">{t("overview.manageModels")}</a>
+        </div>
+        {attentionRoutes.length ? <div className="attention-list">
+          {attentionRoutes.slice(0, 5).map((route) => <div key={route.id}>
+            <span className={`badge ${route.enabled ? "warn" : "muted-badge"}`}>{status(route.enabled ? route.health : "disabled")}</span>
+            <b>{route.display_name || route.remote_model}</b><small>{route.provider_name} · {route.remote_model}</small>
+          </div>)}
+        </div> : <p className="empty">{t("overview.noAttention")}</p>}
+      </section>
+
+      <section className="card recent-card" data-testid="recent-calls">
+        <div className="section-head recent-head">
+          <div><h2><span className="section-icon bars" aria-hidden="true">▥</span>{t("overview.recentTitle")}</h2><p>{t("overview.recentDesc")}</p></div>
+          <div className="recent-actions">
+            <div className="range-switch" role="group" aria-label={t("overview.rangeLabel")}>
+              {[1, 7, 30].map((days) => <button key={days} className={rangeDays === days ? "active" : ""} onClick={() => setRangeDays(days)}>{days === 1 ? "24h" : `${days}d`}</button>)}
+            </div>
+            <button onClick={onRefresh}>↻ {t("common.refresh")}</button>
+          </div>
+        </div>
+        <div className="table-wrap"><table><thead><tr><th>{t("common.model")}</th><th>{t("common.provider")}</th><th>{t("overview.tenantApp")}</th><th>{t("common.result")}</th><th>{t("common.latency")}</th><th>{t("common.token")}</th><th>{t("overview.time")}</th></tr></thead>
+          <tbody>{recentConnections.map((item, index) => (
+            <tr key={item.request_id ?? index}>
+              <td><b>{item.requested_model ?? "—"}</b><small>{item.remote_model ?? ""}</small></td>
+              <td>{item.provider_id ?? "—"}</td>
+              <td>{item.tenant_id ?? "system"}<small>{item.application_id ?? "legacy-global"}</small></td>
+              <td><span className={item.status === "success" ? "badge ok" : "badge bad"}>{status(item.status)}</span></td>
+              <td>{item.elapsed_ms == null ? "—" : `${item.elapsed_ms} ms`}</td>
+              <td>{formatCount(item.usage?.total_tokens)}</td>
+              <td>{timeLabel(item.timestamp)}</td>
+            </tr>
+          ))}{!recentConnections.length && <tr><td colSpan={7} className="empty">{t("overview.noCalls")}</td></tr>}</tbody>
+        </table></div>
+      </section>
+
+      <section className="overview-grid overview-secondary">
+        <article className="card api-card" data-testid="client-access">
           <div className="section-head compact"><div><h2><span className="section-icon" aria-hidden="true">◎</span>{t("overview.externalTitle")}</h2><p>{t("overview.externalDesc")}</p></div><span className="section-arrow" aria-hidden="true">›</span></div>
           <div className="endpoint-grid">
             <div className="endpoint-item"><div><span>{t("common.apiBase")}</span><code>{apiBase}</code></div><CopyButton value={apiBase} label={t("common.copy")} /></div>
@@ -124,31 +149,6 @@ export function OverviewPage({
           </div>
           <div className="route-note"><span aria-hidden="true">💡</span>{t("overview.autoRoutingNote")}</div>
         </article>
-      </section>
-
-      <section className="card recent-card">
-        <div className="section-head recent-head">
-          <div><h2><span className="section-icon bars" aria-hidden="true">▥</span>{t("overview.recentTitle")}</h2><p>{t("overview.recentDesc")}</p></div>
-          <div className="recent-actions">
-            <div className="range-switch" role="group" aria-label={t("overview.rangeLabel")}>
-              {[1, 7, 30].map((days) => <button key={days} className={rangeDays === days ? "active" : ""} onClick={() => setRangeDays(days)}>{days === 1 ? "24h" : `${days}d`}</button>)}
-            </div>
-            <button onClick={onRefresh}>↻ {t("common.refresh")}</button>
-          </div>
-        </div>
-        <div className="table-wrap"><table><thead><tr><th>{t("common.model")}</th><th>{t("common.provider")}</th><th>{t("overview.tenantApp")}</th><th>{t("common.result")}</th><th>{t("common.latency")}</th><th>{t("common.token")}</th><th>{t("overview.time")}</th></tr></thead>
-          <tbody>{recentConnections.map((item, index) => (
-            <tr key={item.request_id ?? index}>
-              <td><b>{item.requested_model ?? "—"}</b><small>{item.remote_model ?? ""}</small></td>
-              <td>{item.provider_id ?? "—"}</td>
-              <td>{item.tenant_id ?? "system"}<small>{item.application_id ?? "legacy-global"}</small></td>
-              <td><span className={item.status === "success" ? "badge ok" : "badge bad"}>{status(item.status)}</span></td>
-              <td>{item.elapsed_ms == null ? "—" : `${item.elapsed_ms} ms`}</td>
-              <td>{formatCount(item.usage?.total_tokens)}</td>
-              <td>{timeLabel(item.timestamp)}</td>
-            </tr>
-          ))}{!recentConnections.length && <tr><td colSpan={7} className="empty">{t("overview.noCalls")}</td></tr>}</tbody>
-        </table></div>
       </section>
     </div>
   );

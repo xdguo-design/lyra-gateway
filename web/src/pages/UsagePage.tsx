@@ -131,6 +131,16 @@ export function UsagePage() {
         <article className="card stat"><b>{usage.priced_calls} / {usage.calls}</b><span>{t("usage.pricedCalls")}</span></article>
       </section>
 
+      <section className="grid-two">
+        <UsageTable title={t("usage.byTenant")} rows={usage.by_tenant} kind="tenant" />
+        <UsageTable title={t("usage.byApplication")} rows={usage.by_application} kind="application" />
+      </section>
+      <section className="grid-two">
+        <UsageTable title={t("usage.byProvider")} rows={usage.by_provider} kind="provider" />
+        <UsageTable title={t("usage.byModel")} rows={usage.by_model} kind="model" />
+      </section>
+      <UsageTable title={t("usage.byDay")} rows={usage.by_day} kind="day" />
+
       <section className="card">
         <div className="section-head"><div><h2>{t("usage.quotaTitle")}</h2><p>{t("usage.quotaDesc")}</p></div></div>
         <form className="filter-grid quota-editor" onSubmit={saveQuota}>
@@ -143,16 +153,6 @@ export function UsagePage() {
           <div className="form-actions"><button className="primary" type="submit">{t("usage.saveQuota")}</button></div>
         </form>
       </section>
-
-      <section className="grid-two">
-        <UsageTable title={t("usage.byTenant")} rows={usage.by_tenant} kind="tenant" />
-        <UsageTable title={t("usage.byApplication")} rows={usage.by_application} kind="application" />
-      </section>
-      <section className="grid-two">
-        <UsageTable title={t("usage.byProvider")} rows={usage.by_provider} kind="provider" />
-        <UsageTable title={t("usage.byModel")} rows={usage.by_model} kind="model" />
-      </section>
-      <UsageTable title={t("usage.byDay")} rows={usage.by_day} kind="day" />
     </div>
   );
 }

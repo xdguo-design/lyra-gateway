@@ -58,6 +58,16 @@ wheel 已包含 React 管理后台，**运行时不需要 Node.js**。
 - Provider API Key 在桌面端使用系统凭据存储，在云端使用加密持久文件；均不写入目录导出或接口响应
 - Windows 桌面版启动时自动运行本地网关，不弹出 CMD 窗口
 
+## API 调用联调
+
+在仓库根目录执行：
+
+```powershell
+python scripts/simulate_client_call.py
+```
+
+该脚本会启动隔离的本地 Gateway，通过真实 HTTP 请求调用 `/v1/chat/completions`，并检查应用密钥鉴权、响应、`X-Request-ID`、路由日志和 Usage。Provider 使用确定性测试适配器，不会访问外部模型服务或消耗模型额度。
+
 ## 桌面版
 
 直接运行构建产物：

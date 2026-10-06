@@ -1,8 +1,10 @@
 import time
 
 import pytest
+from fastapi.testclient import TestClient
 
 from freellm_gateway.adapters.base import ProviderError
+from freellm_gateway.api import create_app
 from freellm_gateway.health import is_eligible
 from freellm_gateway.models import HealthStatus, ModelRoute
 from freellm_gateway.service import ModelGateway, build_probe_prompt, extract_output_text
@@ -72,15 +74,55 @@ async def test_probe_without_completion_choices_raises_protocol_error_and_stays_
 
 
 @pytest.mark.asyncio
-async def test_probe_accepts_completion_envelope_with_empty_visible_text():
-    adapter = StaticAdapter(response={"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]})
+async def test_probe_rejects_empty_visible_text_and_records_safe_diagnostic():
+    adapter = StaticAdapter(
+        response={
+            "choices": [{
+                "message": {"content": "", "reasoning_content": "private reasoning text"},
+                "finish_reason": "stop",
+            }],
+            "usage": {"completion_tokens": 7},
+        }
+    )
     gateway = make_gateway(adapter)
 
-    result = await gateway.probe("r")
+    with pytest.raises(ProviderError) as error:
+        await gateway.probe("r")
 
-    assert result["choices"][0]["message"]["content"] == ""
+    assert error.value.kind == "empty_output"
     assert gateway.route("r").health == HealthStatus.HEALTHY
-    assert gateway.health_states["r"].last_error_kind is None
+    state = gateway.health_states["r"]
+    assert state.last_error_kind == "empty_output"
+    assert "content_chars=0" in state.last_error_detail
+    assert "reasoning_chars=22" in state.last_error_detail
+    assert "private reasoning text" not in state.last_error_detail
+    assert "completion_tokens=7" in state.last_error_detail
+
+
+def test_admin_routes_expose_redacted_completion_shape_diagnostic():
+    adapter = StaticAdapter(
+        response={
+            "choices": [{
+                "message": {"content": "", "reasoning_content": "secret diagnostic fixture"},
+                "finish_reason": "stop",
+            }]
+        }
+    )
+    gateway = make_gateway(adapter)
+    client = TestClient(create_app(gateway=gateway, api_token="api-token", admin_token="admin-token"))
+
+    response = client.post(
+        "/api/admin/routes/r/probe",
+        headers={"Authorization": "Bearer admin-token"},
+    )
+    routes = client.get("/api/admin/routes", headers={"Authorization": "Bearer admin-token"})
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "empty_output"
+    detail = routes.json()["data"][0]["health_detail"]["last_error_detail"]
+    assert "content_chars=0" in detail
+    assert "reasoning_chars=25" in detail
+    assert "secret diagnostic fixture" not in detail
 
 
 @pytest.mark.asyncio

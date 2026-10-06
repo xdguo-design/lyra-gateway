@@ -77,7 +77,9 @@ export function SettingsPage({
   return <div className="stack">
     {message && <div className="notice bad">{message}</div>}
     {issuedKey && <div className="notice warn"><b>{t("settings.keyOnce")}</b><code>{issuedKey}</code><div className="actions"><button type="button" onClick={() => void copyIssuedKey()}>{copiedKey ? t("common.copied") : t("settings.copyKey")}</button></div></div>}
-    <section className="grid-two">
+    <section className="stack" data-testid="settings-client-setup">
+      <div className="section-head"><div><h2>{t("settings.clientSetupTitle")}</h2><p>{t("settings.clientSetupDesc")}</p></div></div>
+      <div className="grid-two">
       <form className="card form-card" onSubmit={createTenant}>
         <div className="section-head"><div><h2>{t("common.tenant")}</h2><p>{t("settings.tenantDesc")}</p></div></div>
         <div className="form-grid one"><label>Tenant ID<input required value={tenantDraft.id} onChange={(event) => setTenantDraft({ ...tenantDraft, id: event.target.value })} /></label><label>{t("common.name")}<input required value={tenantDraft.name} onChange={(event) => setTenantDraft({ ...tenantDraft, name: event.target.value })} /></label></div>
@@ -90,9 +92,10 @@ export function SettingsPage({
         <div className="form-actions"><button className="primary" type="submit">{t("settings.createApp")}</button></div>
         <div className="compact-list">{applications.map((item) => <div key={item.id}><b>{item.name}</b><code>{item.key_prefix}…</code></div>)}</div>
       </form>
+      </div>
     </section>
 
-    <section className="card">
+    <section className="card" data-testid="settings-runtime-access">
       <div className="section-head"><div><h2>{t("settings.runtimeTitle")}</h2><p>{t("settings.runtimeDesc")}</p></div></div>
       <div className="kv-list copyable">
         <CopyRow label="API Token" value={overview?.api_token} />
@@ -101,11 +104,17 @@ export function SettingsPage({
         <CopyRow label="Images" value={overview?.images_url} />
         <CopyRow label="Models" value={overview?.models_url} />
         <CopyRow label="Health" value={overview?.health_url} />
+        <CopyRow label="Docs" value={overview?.docs_url} />
+      </div>
+    </section>
+
+    <section className="card" data-testid="settings-diagnostics">
+      <div className="section-head"><div><h2>{t("settings.diagnosticsTitle")}</h2><p>{t("settings.diagnosticsDesc")}</p></div></div>
+      <div className="kv-list copyable">
         <CopyRow label="Database" value={overview?.database_path} />
         <CopyRow label={t("settings.connectionLog")} value={overview?.connection_log_path} />
         <CopyRow label={t("settings.catalogOutput")} value={overview?.catalog_output_path} />
         <CopyRow label={t("settings.gatewayLog")} value={overview?.logs_path} />
-        <CopyRow label="Docs" value={overview?.docs_url} />
       </div>
     </section>
   </div>;

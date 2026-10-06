@@ -123,7 +123,18 @@ class ModelGateway:
             error = ProviderError(
                 "provider_protocol_error",
                 502,
-                "provider returned no completion choices",
+                completion_shape_diagnostic(result),
+                retriable=False,
+            )
+            self._record_error(route, error, source=source)
+            if enforce_routing:
+                self._demote_route(route.id)
+            raise error
+        if not is_usable_completion(result, "chat"):
+            error = ProviderError(
+                "empty_output",
+                502,
+                completion_shape_diagnostic(result),
                 retriable=False,
             )
             self._record_error(route, error, source=source)
@@ -142,7 +153,7 @@ class ModelGateway:
         usage_context = dict(usage_context or {})
         requested_model = payload.get("model", "auto")
         capability = capability or infer_capability(payload)
-        request_id = uuid4().hex
+        request_id = str(usage_context.pop("request_id", "") or uuid4().hex)
         candidates = self._candidates(requested_model, capability)
         if not candidates:
             self._log_connection(
@@ -155,15 +166,9 @@ class ModelGateway:
 
         errors: list[ProviderError] = []
         for attempt, route in enumerate(candidates, 1):
-            if requested_model == "auto":
-                try:
-                    await self.probe(route.id, enforce_routing=True)
-                except ProviderError as error:
-                    errors.append(error)
-                    continue
             adapter = self.adapters.get(route.id)
             if adapter is None:
-                error = ProviderError("missing_adapter", 500, route.id, retriable=False)
+                error = ProviderError("missing_adapter", 503, route.id, retriable=False, safe_to_retry=True)
                 errors.append(error)
                 self._log_connection(
                     usage_context=usage_context,
@@ -180,7 +185,7 @@ class ModelGateway:
                     raise ProviderError(
                         "empty_output",
                         502,
-                        "provider returned an unusable completion",
+                        completion_shape_diagnostic(response),
                         retriable=False,
                     )
                 self._record_success(route, (time.monotonic() - started) * 1000)
@@ -195,66 +200,28 @@ class ModelGateway:
                 return response
             except ProviderError as error:
                 self._record_error(route, error)
-                if requested_model == "auto":
+                if error.safe_to_retry and requested_model == "auto":
                     self._demote_route(route.id)
-                errors.append(error)
                 self._log_connection(
                     usage_context=usage_context,
                     request_id=request_id, requested_model=requested_model, capability=capability,
                     stream=False, attempt=attempt, route=route, status="failed",
                     elapsed_ms=int((time.monotonic() - started) * 1000), error_kind=error.kind,
                 )
+                if not (error.safe_to_retry and requested_model == "auto"):
+                    raise
+                errors.append(error)
             except Exception as error:
                 protocol_error = ProviderError("provider_protocol_error", 502, str(error), retriable=False)
                 self._record_error(route, protocol_error)
-                if requested_model == "auto":
-                    self._demote_route(route.id)
-                errors.append(protocol_error)
                 self._log_connection(
                     usage_context=usage_context,
                     request_id=request_id, requested_model=requested_model, capability=capability,
                     stream=False, attempt=attempt, route=route, status="failed",
                     elapsed_ms=int((time.monotonic() - started) * 1000), error_kind=protocol_error.kind,
                 )
+                raise protocol_error from error
         raise ProviderError("all_providers_failed", 503, "; ".join(str(error) for error in errors), retriable=False)
-
-    async def _preflight_stream(self, route: ModelRoute) -> None:
-        adapter = self.adapters.get(route.id)
-        if adapter is None or not hasattr(adapter, "stream"):
-            error = ProviderError("stream_not_supported", 501, route.id, retriable=False)
-            self._record_error(route, error, source="traffic")
-            self._demote_route(route.id)
-            raise error
-        started = time.monotonic()
-        try:
-            probe_request = {
-                "model": route.remote_model,
-                "messages": [{"role": "user", "content": build_probe_prompt()}],
-                "max_tokens": 64,
-                "stream": True,
-            }
-            if route.reasoning_effort is not None:
-                probe_request["reasoning_effort"] = route.reasoning_effort
-            emitted = False
-            async for _chunk in adapter.stream(probe_request):
-                emitted = True
-            if not emitted:
-                raise ProviderError(
-                    "empty_output",
-                    502,
-                    "provider returned an empty stream",
-                    retriable=False,
-                )
-        except ProviderError as error:
-            self._record_error(route, error, source="traffic")
-            self._demote_route(route.id)
-            raise
-        except Exception as error:
-            protocol_error = ProviderError("provider_protocol_error", 502, str(error), retriable=False)
-            self._record_error(route, protocol_error, source="traffic")
-            self._demote_route(route.id)
-            raise protocol_error from error
-        self._record_success(route, (time.monotonic() - started) * 1000)
 
     async def stream(
         self,
@@ -264,7 +231,7 @@ class ModelGateway:
         usage_context = dict(usage_context or {})
         requested_model = payload.get("model", "auto")
         capability = infer_capability(payload)
-        request_id = uuid4().hex
+        request_id = str(usage_context.pop("request_id", "") or uuid4().hex)
         candidates = self._candidates(requested_model, capability)
         if not candidates:
             self._log_connection(
@@ -276,15 +243,9 @@ class ModelGateway:
             raise ProviderError("no_available_model", 503, "no eligible model route", retriable=False)
         errors: list[ProviderError] = []
         for attempt, route in enumerate(candidates, 1):
-            if requested_model == "auto":
-                try:
-                    await self._preflight_stream(route)
-                except ProviderError as error:
-                    errors.append(error)
-                    continue
             adapter = self.adapters.get(route.id)
             if adapter is None or not hasattr(adapter, "stream"):
-                error = ProviderError("stream_not_supported", 501, route.id, retriable=False)
+                error = ProviderError("stream_not_supported", 501, route.id, retriable=False, safe_to_retry=True)
                 errors.append(error)
                 self._log_connection(
                     usage_context=usage_context,
@@ -322,7 +283,7 @@ class ModelGateway:
                 return
             except ProviderError as error:
                 self._record_error(route, error)
-                if requested_model == "auto":
+                if error.safe_to_retry and requested_model == "auto":
                     self._demote_route(route.id)
                 if emitted:
                     self._log_connection(
@@ -333,7 +294,6 @@ class ModelGateway:
                         usage=usage,
                     )
                     raise
-                errors.append(error)
                 self._log_connection(
                     usage_context=usage_context,
                     request_id=request_id, requested_model=requested_model, capability=capability,
@@ -341,11 +301,12 @@ class ModelGateway:
                     elapsed_ms=int((time.monotonic() - started) * 1000), error_kind=error.kind,
                     usage=usage,
                 )
+                if not (error.safe_to_retry and requested_model == "auto"):
+                    raise
+                errors.append(error)
             except Exception as error:
                 protocol_error = ProviderError("provider_protocol_error", 502, str(error), retriable=False)
                 self._record_error(route, protocol_error)
-                if requested_model == "auto":
-                    self._demote_route(route.id)
                 if emitted:
                     self._log_connection(
                     usage_context=usage_context,
@@ -355,7 +316,6 @@ class ModelGateway:
                         usage=usage,
                     )
                     raise protocol_error from error
-                errors.append(protocol_error)
                 self._log_connection(
                     usage_context=usage_context,
                     request_id=request_id, requested_model=requested_model, capability=capability,
@@ -363,6 +323,7 @@ class ModelGateway:
                     elapsed_ms=int((time.monotonic() - started) * 1000), error_kind=protocol_error.kind,
                     usage=usage,
                 )
+                raise protocol_error from error
         raise ProviderError("all_providers_failed", 503, "; ".join(str(error) for error in errors), retriable=False)
 
     def candidates(self, requested_model: str, capability: str) -> list[ModelRoute]:
@@ -393,12 +354,18 @@ class ModelGateway:
             ProbeResult(
                 ok=False,
                 error_kind=error.kind,
+                error_detail=(
+                    error.detail
+                    if error.kind in {"empty_output", "provider_protocol_error"}
+                    and error.detail.startswith("completion_shape:")
+                    else None
+                ),
                 error_retryable=error.retriable,
                 rate_limited=error.kind == "rate_limit",
                 is_quota=error.kind == "quota_exhausted",
                 is_transient=error.retriable,
                 retry_after=error.retry_after,
-                probe=source == "probe",
+                probe=source == "probe" or error.kind == "invalid_request",
             ),
             time.monotonic(), self.policies.get(route.id, RoutePolicy()),
         )
@@ -464,6 +431,28 @@ class ModelGateway:
         if self.on_connection_logged is None:
             return
         identity = dict(usage_context or {})
+        usage_source = "provider" if isinstance(usage, dict) and usage else "unknown"
+        estimated_usage = identity.get("usage_estimate")
+        definitely_rejected = {
+            "authentication_error",
+            "permission_error",
+            "rate_limit",
+            "quota_exhausted",
+            "invalid_request",
+            "model_unavailable",
+        }
+        if (
+            usage is None
+            and isinstance(estimated_usage, dict)
+            and estimated_usage.get("source") in {"estimated", "estimated_partial"}
+            and (status == "success" or error_kind not in definitely_rejected)
+        ):
+            usage = {
+                key: estimated_usage[key]
+                for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                if isinstance(estimated_usage.get(key), int)
+            }
+            usage_source = str(estimated_usage["source"])
         entry = {
             "request_id": request_id,
             "tenant_id": identity.get("tenant_id") or "system",
@@ -478,6 +467,7 @@ class ModelGateway:
             "status": status,
             "elapsed_ms": elapsed_ms,
             "usage": usage,
+            "usage_source": usage_source,
         }
         if error_kind:
             entry["error_kind"] = error_kind
@@ -512,7 +502,17 @@ def is_usable_completion(response: object, capability: str = "chat") -> bool:
     if not isinstance(response, dict):
         return False
     if capability == "image_generation":
-        return not response.get("error")
+        if response.get("error"):
+            return False
+        data = response.get("data")
+        return isinstance(data, list) and any(
+            isinstance(item, dict)
+            and (
+                isinstance(item.get("url"), str) and bool(item["url"].strip())
+                or isinstance(item.get("b64_json"), str) and bool(item["b64_json"].strip())
+            )
+            for item in data
+        )
     choices = response.get("choices")
     if not isinstance(choices, list) or not choices:
         return False
@@ -539,14 +539,11 @@ def is_usable_completion(response: object, capability: str = "chat") -> bool:
 
 
 def is_probe_completion(response: object) -> bool:
-    """Return whether a probe received a valid completion envelope.
+    """Return whether a response has an OpenAI-style completion envelope.
 
-    A health probe checks reachability and protocol compatibility. Some
-    providers legitimately return an assistant choice whose visible text is
-    empty (for example, when the response is represented by reasoning or
-    another non-text field), so probe health must not depend on text content.
-    Traffic requests still use ``is_usable_completion`` for that stricter
-    business-level validation.
+    This checks protocol shape only. Chat probes also call
+    ``is_usable_completion`` so an empty assistant message cannot be reported
+    as a chat-ready model.
     """
     if not isinstance(response, dict) or response.get("error"):
         return False
@@ -561,6 +558,50 @@ def is_probe_completion(response: object) -> bool:
             or "finish_reason" in choice
         )
         for choice in choices
+    )
+
+
+def completion_shape_diagnostic(response: object) -> str:
+    """Describe an unusable response without retaining prompt or output text."""
+    choices = response.get("choices") if isinstance(response, dict) else None
+    choices = choices if isinstance(choices, list) else []
+    choice = next((item for item in choices if isinstance(item, dict)), {})
+    message = choice.get("message") if isinstance(choice.get("message"), dict) else {}
+    content = message.get("content", choice.get("text"))
+    if isinstance(content, str):
+        content_type = "string"
+    elif isinstance(content, list):
+        content_type = "array"
+    elif content is None:
+        content_type = "null" if "content" in message else "absent"
+    else:
+        content_type = "other"
+
+    reasoning = message.get("reasoning_content", message.get("reasoning"))
+    reasoning_chars = len(reasoning) if isinstance(reasoning, str) else 0
+    message_keys = [
+        key for key in ("content", "reasoning_content", "reasoning", "tool_calls", "function_call")
+        if key in message
+    ]
+    tool_calls = message.get("tool_calls")
+    tool_call_count = len(tool_calls) if isinstance(tool_calls, list) else 0
+    finish_reason = choice.get("finish_reason")
+    allowed_finish_reasons = {"stop", "length", "tool_calls", "function_call", "content_filter"}
+    finish_reason = (
+        finish_reason
+        if isinstance(finish_reason, str) and finish_reason in allowed_finish_reasons
+        else "other"
+    )
+    usage = response.get("usage") if isinstance(response, dict) else None
+    completion_tokens = usage.get("completion_tokens") if isinstance(usage, dict) else None
+    if not isinstance(completion_tokens, int) or isinstance(completion_tokens, bool):
+        completion_tokens = "unknown"
+    return (
+        "completion_shape: "
+        f"choices={len(choices)}; message_keys={','.join(message_keys) or 'none'}; "
+        f"content_type={content_type}; content_chars={len(extract_output_text(response)) if isinstance(response, dict) else 0}; "
+        f"reasoning_chars={reasoning_chars}; tool_calls={tool_call_count}; "
+        f"finish_reason={finish_reason}; completion_tokens={completion_tokens}"
     )
 
 

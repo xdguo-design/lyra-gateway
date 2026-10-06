@@ -25,6 +25,12 @@ class GeminiAdapter:
         }
 
     async def complete(self, payload: dict) -> dict:
+        if payload.get("task") == "image_generation":
+            raise ProviderError(
+                "capability_not_supported", 501,
+                "Gemini image generation is not supported by this adapter",
+                retriable=False,
+            )
         endpoint = gemini_generate_endpoint(self.base_url, payload.get("model", ""))
         try:
             response = await self.client.post(
@@ -32,6 +38,10 @@ class GeminiAdapter:
                 headers=self._headers(),
                 json=to_gemini_request(payload),
             )
+        except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            raise ProviderError("timeout", 504, str(exc), safe_to_retry=True) from exc
+        except httpx.ConnectError as exc:
+            raise ProviderError("network_error", 502, str(exc), safe_to_retry=True) from exc
         except httpx.TimeoutException as exc:
             raise ProviderError("timeout", 504, str(exc)) from exc
         except httpx.HTTPError as exc:
@@ -86,6 +96,10 @@ class GeminiAdapter:
                 yield b"data: [DONE]\n\n"
         except ProviderError:
             raise
+        except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            raise ProviderError("timeout", 504, str(exc), safe_to_retry=True) from exc
+        except httpx.ConnectError as exc:
+            raise ProviderError("network_error", 502, str(exc), safe_to_retry=True) from exc
         except httpx.TimeoutException as exc:
             raise ProviderError("timeout", 504, str(exc)) from exc
         except httpx.HTTPError as exc:
@@ -335,4 +349,5 @@ def _raise_for_error(response: httpx.Response) -> None:
         response.text,
         retriable=failure.retryable,
         retry_after=failure.retry_after,
+        safe_to_retry=response.status_code in {401, 403, 404, 429},
     )

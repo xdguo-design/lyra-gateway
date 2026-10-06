@@ -23,6 +23,7 @@ class ProbeResult:
     first_token_ms: int | None = None
     total_ms: int | None = None
     error_kind: str | None = None
+    error_detail: str | None = None
     error_retryable: bool = False
     rate_limited: bool = False
     is_quota: bool = False
@@ -39,6 +40,7 @@ class HealthState:
     last_first_token_ms: int | None = None
     last_total_ms: int | None = None
     last_error_kind: str | None = None
+    last_error_detail: str | None = None
     last_error_retryable: bool | None = None
     last_is_quota: bool = False
     last_is_transient: bool = False
@@ -63,6 +65,7 @@ def record_probe(
         last_first_token_ms=result.first_token_ms,
         last_total_ms=result.total_ms,
         last_error_kind=result.error_kind,
+        last_error_detail=None if result.ok else result.error_detail,
         last_error_retryable=None if result.ok else result.error_retryable,
         last_is_quota=False if result.ok else result.is_quota,
         last_is_transient=False if result.ok else result.is_transient,
@@ -93,7 +96,12 @@ def record_probe(
     else:
         status = HealthStatus.FAILED
     cooldown_until = None
-    if status in {HealthStatus.RATE_LIMITED, HealthStatus.QUOTA_EXHAUSTED, HealthStatus.COOLDOWN}:
+    if status in {
+        HealthStatus.RATE_LIMITED,
+        HealthStatus.QUOTA_EXHAUSTED,
+        HealthStatus.COOLDOWN,
+        HealthStatus.FAILED,
+    }:
         cooldown = policy.cooldown_for(failures)
         if result.retry_after:
             cooldown = max(cooldown, result.retry_after)
@@ -108,8 +116,10 @@ def record_probe(
 
 
 def is_eligible(state: HealthState, now: float) -> bool:
-    if state.status in {HealthStatus.DISABLED, HealthStatus.SLOW, HealthStatus.FAILED}:
+    if state.status in {HealthStatus.DISABLED, HealthStatus.SLOW}:
         return False
+    if state.status == HealthStatus.FAILED:
+        return state.cooldown_until is not None and now >= state.cooldown_until
     if state.status in {
         HealthStatus.RATE_LIMITED,
         HealthStatus.QUOTA_EXHAUSTED,
@@ -124,6 +134,7 @@ def effective_status(state: HealthState, now: float) -> HealthStatus:
         HealthStatus.RATE_LIMITED,
         HealthStatus.QUOTA_EXHAUSTED,
         HealthStatus.COOLDOWN,
+        HealthStatus.FAILED,
     } and state.cooldown_until is not None and now >= state.cooldown_until:
         return HealthStatus.HEALTHY
     return state.status

@@ -23,6 +23,30 @@ async def test_openai_adapter_posts_bearer_request_and_returns_json():
 
 
 @pytest.mark.asyncio
+async def test_openai_adapter_sends_image_generation_to_image_endpoint():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == httpx.URL("https://example.test/v1/images/generations")
+        assert request.headers["authorization"] == "Bearer secret"
+        assert request.read() == b'{"model":"image-model","prompt":"a lake","n":1}'
+        return httpx.Response(200, json={"created": 1, "data": [{"url": "https://image.test/a.png"}]})
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    adapter = OpenAICompatibleAdapter(
+        endpoint="https://example.test/v1/chat/completions", api_key="secret", client=client
+    )
+
+    result = await adapter.complete({
+        "task": "image_generation",
+        "model": "image-model",
+        "prompt": "a lake",
+        "n": 1,
+    })
+
+    assert result["data"][0]["url"] == "https://image.test/a.png"
+    await adapter.aclose()
+
+
+@pytest.mark.asyncio
 async def test_openai_adapter_classifies_rate_limit_error():
     client = httpx.AsyncClient(
         transport=httpx.MockTransport(lambda request: httpx.Response(429, json={"error": {"message": "quota exceeded"}}))

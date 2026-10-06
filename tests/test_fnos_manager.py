@@ -38,8 +38,7 @@ def make_client(tmp_path, monkeypatch):
     fake = FakeDocker()
     monkeypatch.setattr(manager, "SERVICES_FILE", path)
     monkeypatch.setattr(manager, "TOKEN", "test-token")
-    monkeypatch.setattr(manager, "_docker", lambda: fake)
-    manager.app.dependency_overrides[manager._docker] = lambda: fake
+    monkeypatch.setitem(manager.app.dependency_overrides, manager._docker, lambda: fake)
     return TestClient(manager.app), fake
 
 

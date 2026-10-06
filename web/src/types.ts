@@ -24,6 +24,13 @@ export interface Route {
   capabilities: string[];
   enabled: boolean;
   health: HealthStatus;
+  health_detail?: {
+    last_error_kind?: string | null;
+    last_error_detail?: string | null;
+    last_error_retryable?: boolean | null;
+    last_total_ms?: number | null;
+    consecutive_failures?: number;
+  };
   reasoning_effort: string | null;
   pricing: Pricing;
   public_url: string | null;

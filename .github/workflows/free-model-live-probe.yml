@@ -1,0 +1,111 @@
+name: Free model live probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: free-model-live-probe
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    name: Probe FreeLLM models through Lyra Gateway
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      FREELLM_GATEWAY_HOST: 127.0.0.1
+      FREELLM_GATEWAY_PORT: "18770"
+      FREELLM_GATEWAY_DB: ${{ runner.temp }}/free-model-probe.sqlite3
+      FREELLM_GATEWAY_SECRETS_FILE: ${{ runner.temp }}/free-model-probe-secrets.json
+      FREELLM_TEST_GATEWAY_URL: http://127.0.0.1:18770
+      FREELLM_TEST_ATRIA_CONFIG: ${{ vars.ATRIA }}
+      FREELLM_TEST_DEEPSEEKV4FLASH_CONFIG: ${{ vars.DEEPSEEKV4FLASH }}
+      FREELLM_TEST_GLM52_CONFIG: ${{ vars.GLM52 }}
+      FREELLM_TEST_KIMIK3_CONFIG: ${{ vars.KIMIK3 }}
+      FREELLM_TEST_SENSENOVA68FLASHLITE_CONFIG: ${{ vars.SENSENOVA68FLASHLITE }}
+      FREELLM_TEST_DEEPSEEK_CONFIG: NOVEL_AI_KIND=openai-compatible NOVEL_AI_MODEL=deepseek-flash NOVEL_AI_BASE_URL=https://api.deepseek.com NOVEL_AI_API_KEY_ENV=DEEPSEEK
+      FREELLM_TEST_ATRIA_KEY: ${{ secrets.ATRIA }}
+      FREELLM_TEST_SENSENOVA_KEY: ${{ secrets.SENSENOVA }}
+      FREELLM_TEST_DEEPSEEK_KEY: ${{ secrets.DEEPSEEK }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install gateway and HTTP client
+        run: python -m pip install -e .
+
+      - name: Generate disposable Gateway credentials
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+          from cryptography.fernet import Fernet
+
+          values = {
+              "FREELLM_GATEWAY_API_TOKEN": secrets.token_urlsafe(32),
+              "FREELLM_GATEWAY_ADMIN_TOKEN": secrets.token_urlsafe(32),
+              "FREELLM_GATEWAY_SECRET_KEY": Fernet.generate_key().decode("ascii"),
+          }
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env_file:
+              for name, value in values.items():
+                  env_file.write(f"{name}={value}\n")
+          PY
+
+      - name: Check required provider credentials are configured
+        shell: bash
+        run: |
+          set -eu
+          for name in \
+            FREELLM_TEST_ATRIA_KEY FREELLM_TEST_SENSENOVA_KEY; do
+            if [ -z "${!name}" ]; then
+              echo "Required Actions secret is missing: $name" >&2
+              exit 2
+            fi
+          done
+
+      - name: Start isolated Gateway with encrypted secret storage
+        run: |
+          python -m freellm_gateway run --host 127.0.0.1 --port 18770 --skip-web-build \
+            >"${RUNNER_TEMP}/free-model-probe-gateway.log" 2>&1 &
+          echo $! >"${RUNNER_TEMP}/free-model-probe-gateway.pid"
+          python - <<'PY'
+          import time
+          import urllib.request
+
+          for _ in range(120):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:18770/health", timeout=1) as response:
+                      if response.status == 200:
+                          break
+              except Exception:
+                  time.sleep(0.25)
+          else:
+              raise SystemExit("Gateway did not become healthy; see the job log")
+          PY
+
+      - name: Simulate an OpenAI-compatible client for each configured model
+        run: python scripts/probe_free_models.py
+
+      - name: Stop isolated Gateway
+        if: always()
+        run: |
+          if [ -f "${RUNNER_TEMP}/free-model-probe-gateway.pid" ]; then
+            kill "$(cat "${RUNNER_TEMP}/free-model-probe-gateway.pid")" 2>/dev/null || true
+          fi
+
+      - name: Upload Gateway diagnostic log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-model-live-probe-gateway-log
+          path: ${{ runner.temp }}/free-model-probe-gateway.log
+          if-no-files-found: ignore
+          retention-days: 3

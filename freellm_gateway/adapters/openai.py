@@ -12,12 +12,20 @@ class OpenAICompatibleAdapter:
         self.client = client or httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0))
 
     async def complete(self, payload: dict) -> dict:
+        request_payload = dict(payload)
+        endpoint = self.endpoint
+        if request_payload.pop("task", None) == "image_generation":
+            endpoint = endpoint.rsplit("/chat/completions", 1)[0] + "/images/generations"
         try:
             response = await self.client.post(
-                self.endpoint,
+                endpoint,
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                json=payload,
+                json=request_payload,
             )
+        except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            raise ProviderError("timeout", 504, str(exc), safe_to_retry=True) from exc
+        except httpx.ConnectError as exc:
+            raise ProviderError("network_error", 502, str(exc), safe_to_retry=True) from exc
         except httpx.TimeoutException as exc:
             raise ProviderError("timeout", 504, str(exc)) from exc
         except httpx.HTTPError as exc:
@@ -35,6 +43,7 @@ class OpenAICompatibleAdapter:
                 response.text,
                 retriable=failure.retryable,
                 retry_after=failure.retry_after,
+                safe_to_retry=response.status_code in {401, 403, 404, 429},
             )
         return response.json()
 
@@ -66,6 +75,10 @@ class OpenAICompatibleAdapter:
                         yield (line + "\n").encode("utf-8")
         except ProviderError:
             raise
+        except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            raise ProviderError("timeout", 504, str(exc), safe_to_retry=True) from exc
+        except httpx.ConnectError as exc:
+            raise ProviderError("network_error", 502, str(exc), safe_to_retry=True) from exc
         except httpx.TimeoutException as exc:
             raise ProviderError("timeout", 504, str(exc)) from exc
         except httpx.HTTPError as exc:
@@ -94,6 +107,7 @@ class OpenAICompatibleAdapter:
                 response.text,
                 retriable=failure.retryable,
                 retry_after=failure.retry_after,
+                safe_to_retry=response.status_code in {401, 403, 404, 429},
             )
         data = response.json().get("data", [])
         return [item["id"] for item in data if isinstance(item, dict) and isinstance(item.get("id"), str)]

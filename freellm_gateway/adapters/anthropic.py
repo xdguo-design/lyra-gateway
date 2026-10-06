@@ -29,12 +29,22 @@ class AnthropicAdapter:
         return headers
 
     async def complete(self, payload: dict) -> dict:
+        if payload.get("task") == "image_generation":
+            raise ProviderError(
+                "capability_not_supported", 501,
+                "Anthropic image generation is not supported by this adapter",
+                retriable=False,
+            )
         try:
             response = await self.client.post(
                 self.endpoint,
                 headers=self._headers(),
                 json=to_anthropic_request(payload),
             )
+        except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            raise ProviderError("timeout", 504, str(exc), safe_to_retry=True) from exc
+        except httpx.ConnectError as exc:
+            raise ProviderError("network_error", 502, str(exc), safe_to_retry=True) from exc
         except httpx.TimeoutException as exc:
             raise ProviderError("timeout", 504, str(exc)) from exc
         except httpx.HTTPError as exc:
@@ -78,6 +88,10 @@ class AnthropicAdapter:
                     yield b"data: [DONE]\n\n"
         except ProviderError:
             raise
+        except (httpx.ConnectTimeout, httpx.PoolTimeout) as exc:
+            raise ProviderError("timeout", 504, str(exc), safe_to_retry=True) from exc
+        except httpx.ConnectError as exc:
+            raise ProviderError("network_error", 502, str(exc), safe_to_retry=True) from exc
         except httpx.TimeoutException as exc:
             raise ProviderError("timeout", 504, str(exc)) from exc
         except httpx.HTTPError as exc:
@@ -109,6 +123,7 @@ class AnthropicAdapter:
             response.text,
             retriable=failure.retryable,
             retry_after=failure.retry_after,
+            safe_to_retry=response.status_code in {401, 403, 404, 429},
         )
 
     async def aclose(self) -> None:

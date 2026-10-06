@@ -21,13 +21,19 @@ export function CatalogPage() {
   const [capability, setCapability] = useState("all");
   const [pool, setPool] = useState<CatalogPoolFilter>("all");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [pendingOffer, setPendingOffer] = useState<{ name: string; hasEndpoint: boolean } | null>(null);
 
   async function load() {
+    setLoading(true);
+    setMessage("");
     try {
       const result = await api<{ data: CatalogOffer[] }>("/api/admin/catalog/source?scope=models");
       setOffers(result.data ?? []);
     } catch (error) {
       setMessage(errorText(error));
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -52,17 +58,23 @@ export function CatalogPage() {
   function addToPool(offer: CatalogOffer) {
     const draft = catalogRouteDraft(offer);
     sessionStorage.setItem(CATALOG_DRAFT_KEY, JSON.stringify(draft));
-    window.location.hash = "/models";
+    setPendingOffer({ name: draft.display_name || draft.remote_model, hasEndpoint: draft.has_endpoint });
   }
 
   return (
     <div className="stack">
       {message && <div className="notice">{message}</div>}
+      {pendingOffer && <div className={`notice catalog-handoff ${pendingOffer.hasEndpoint ? "ok" : "warn"}`} role="status">
+        <div><strong>{pendingOffer.hasEndpoint ? t("catalog.prefilled", { name: pendingOffer.name }) : t("catalog.endpointRequired", { name: pendingOffer.name })}</strong>
+          <small>{t("catalog.prefilledNotSaved")}</small></div>
+        <button className="primary" onClick={() => { window.location.hash = "/models"; }}>{t("catalog.continueConfiguration")}</button>
+        <button onClick={() => setPendingOffer(null)}>{t("common.cancel")}</button>
+      </div>}
       <section className="card">
         <div className="section-head">
           <div><h2>{t("catalog.title")}</h2><p>{t("catalog.desc")}</p></div>
           <div className="actions">
-            <button onClick={() => void load()}>{t("common.reload")}</button>
+            <button disabled={loading} onClick={() => void load()}>{t("common.reload")}</button>
             <button onClick={() => void action("export")}>{t("catalog.export")}</button>
             <button className="primary" onClick={() => void action("sync")}>{t("catalog.sync")}</button>
           </div>
@@ -109,10 +121,12 @@ export function CatalogPage() {
               </select>
             </label>
           </div>
-          <div className="catalog-result-count">{t("catalog.showing", { shown: filtered.length, total: offers.length })}</div>
+          <div className="catalog-result-count" data-testid={loading ? "catalog-loading" : undefined} role={loading ? "status" : undefined}>
+            {loading ? t("catalog.loading") : t("catalog.showing", { shown: filtered.length, total: offers.length })}
+          </div>
         </div>
 
-        <div className="catalog-grid">
+        <div className="catalog-grid" aria-busy={loading}>
           {filtered.map((offer, index) => {
             const region = catalogModelRegion(offer);
             const regionLabel =
@@ -145,7 +159,8 @@ export function CatalogPage() {
             );
           })}
         </div>
-        {!filtered.length && <p className="empty">{t("catalog.empty")}</p>}
+        {!loading && !offers.length && !message && <p className="empty" data-testid="catalog-empty">{t("catalog.noEntries")}</p>}
+        {!loading && offers.length > 0 && !filtered.length && <p className="empty" data-testid="catalog-no-matches">{t("catalog.empty")}</p>}
       </section>
     </div>
   );

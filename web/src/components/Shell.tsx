@@ -87,18 +87,16 @@ export function Shell({
           <BrandMark />
           <div className="brand">FreeLLM Gateway<small>{t("shell.localConsole")}</small></div>
         </div>
-        <nav>
+        <nav aria-label={t("shell.primaryNavigation")}>
           {items.map(([key, labelKey]) => (
-            <button key={key} className={view === key ? "active" : ""} onClick={() => onView(key)}>
+            <button key={key} className={view === key ? "active" : ""} aria-current={view === key ? "page" : undefined} onClick={() => onView(key)}>
               <span className="nav-icon"><NavIcon name={key} /></span>
               <span>{t(labelKey)}</span>
             </button>
           ))}
         </nav>
-        <div className="sidebar-art" aria-hidden="true"><span className="mountain mountain-one" /><span className="mountain mountain-two" /></div>
         <div className="sidebar-foot">
-          <p>{t("shell.sloganLine1")}<br />{t("shell.sloganLine2")}</p>
-          <span className="slogan-rule" />
+          <span className={`sidebar-health ${online ? "online" : "offline"}`}><i />{online ? t("shell.online") : t("shell.apiError")}</span>
           <strong>FreeLLM Gateway</strong>
           <small>v1.0.0</small>
         </div>
@@ -118,10 +116,7 @@ export function Shell({
             <kbd>Ctrl K</kbd>
           </div>
           <div className="top-actions">
-            <span className={online ? "service ok" : "service bad"}><i />{online ? t("shell.online") : t("shell.apiError")}</span>
             <button className="language-button" onClick={() => setLanguage(language === "zh" ? "en" : "zh")}>{language === "zh" ? t("lang.en") : t("lang.zh")}</button>
-            <button className="primary top-action-button" onClick={() => onView("models")}>＋ {t("shell.addModel")}</button>
-            <button className="top-action-button" onClick={() => onView("models")}><span aria-hidden="true">↗</span> {t("shell.multiConnection")}</button>
             <details className="account-menu">
               <summary aria-label={t("shell.accountMenu")}>A</summary>
               <div className="account-popover">
@@ -142,7 +137,7 @@ export function Shell({
             </details>
           </div>
         </header>
-        {view !== "overview" && <div className="page-title-strip"><h1>{title}</h1></div>}
+        <div className="page-title-strip"><h1>{title}</h1></div>
         {children}
       </main>
     </div>

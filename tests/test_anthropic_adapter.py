@@ -8,6 +8,21 @@ from freellm_gateway.adapters.base import ProviderError
 
 
 @pytest.mark.asyncio
+async def test_anthropic_rejects_image_generation_before_network_call():
+    client = httpx.AsyncClient(transport=httpx.MockTransport(
+        lambda request: pytest.fail("unsupported image request reached the network")
+    ))
+    adapter = AnthropicAdapter("https://example.test/v1/messages", "secret", client)
+
+    with pytest.raises(ProviderError) as error:
+        await adapter.complete({"task": "image_generation", "model": "image", "prompt": "a lake"})
+
+    assert error.value.kind == "capability_not_supported"
+    assert error.value.status_code == 501
+    await adapter.aclose()
+
+
+@pytest.mark.asyncio
 async def test_anthropic_adapter_translates_messages_and_response():
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url == httpx.URL("https://example.test/v1/messages")

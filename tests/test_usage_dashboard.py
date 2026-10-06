@@ -2,7 +2,7 @@ import sqlite3
 
 from fastapi.testclient import TestClient
 
-from freellm_gateway.api import create_app
+from freellm_gateway.api import _estimate_request_quota_projection, create_app
 from freellm_gateway.db import Database
 from freellm_gateway.models import ModelRoute, Provider
 from freellm_gateway.repository import Repository
@@ -41,6 +41,15 @@ class StreamingUsageAdapter:
             b'"completion_tokens":3,"total_tokens":10}}\n\n'
         )
         yield b"data: [DONE]\n\n"
+
+
+class NoUsageAdapter:
+    async def complete(self, payload):
+        return {
+            "id": "no-usage",
+            "model": payload["model"],
+            "choices": [{"message": {"role": "assistant", "content": "ok"}}],
+        }
 
 
 def make_usage_client(
@@ -651,6 +660,54 @@ def test_token_quota_requires_explicit_output_limit_before_provider_call(tmp_pat
     assert detail["resource"] == "tokens"
     assert detail["required_field"] == "max_tokens or max_completion_tokens"
     assert adapter.complete_calls == 0
+
+
+def test_success_without_provider_usage_is_estimated_and_counts_toward_quota(tmp_path):
+    client, repository = make_usage_client(tmp_path, NoUsageAdapter())
+    client.post(
+        "/api/admin/tenants",
+        headers=admin_headers(),
+        json={"id": "tenant-estimated", "name": "Tenant Estimated"},
+    )
+    key = client.post(
+        "/api/admin/applications",
+        headers=admin_headers(),
+        json={"id": "app-estimated", "tenant_id": "tenant-estimated", "name": "App Estimated"},
+    ).json()["api_key"]
+    payload = {
+        "model": "remote-model",
+        "messages": [{"role": "user", "content": "hello"}],
+        "max_tokens": 8,
+    }
+    projected = _estimate_request_quota_projection(payload, client.app.state.gateway, "chat")
+    client.put(
+        "/api/admin/quotas/application/app-estimated",
+        headers=admin_headers(),
+        json={"token_limit": projected["projected_tokens"], "currency": "USD"},
+    )
+
+    first = client.post(
+        "/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}"},
+        json=payload,
+    )
+    second = client.post(
+        "/v1/chat/completions",
+        headers={"Authorization": f"Bearer {key}"},
+        json=payload,
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+    summary = repository.usage_summary(7, application_id="app-estimated")
+    assert summary["calls"] == 1
+    assert summary["total_tokens"] == projected["projected_tokens"]
+    with repository.database.connect() as connection:
+        record = connection.execute(
+            "SELECT usage_source FROM usage_records WHERE application_id = ?",
+            ("app-estimated",),
+        ).fetchone()
+    assert record["usage_source"] == "estimated"
 
 
 def test_cost_quota_rejects_request_when_route_price_cannot_be_projected(tmp_path):

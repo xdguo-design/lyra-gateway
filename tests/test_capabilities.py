@@ -1,6 +1,7 @@
 import pytest
 
 from freellm_gateway.models import ModelRoute
+from freellm_gateway.adapters.base import ProviderError
 from freellm_gateway.service import ModelGateway
 
 
@@ -10,6 +11,8 @@ class RecordingAdapter:
 
     async def complete(self, payload):
         self.models.append(payload["model"])
+        if payload.get("task") == "image_generation":
+            return {"model": payload["model"], "data": [{"url": "https://image.test/generated.png"}]}
         return {"model": payload["model"], "choices": [{"message": {"content": "ok"}}]}
 
 
@@ -27,7 +30,7 @@ async def test_image_request_selects_vision_route():
 
     await gateway.complete({"model": "auto", "messages": [{"role": "user", "content": [{"type": "text", "text": "what?"}, {"type": "image_url", "image_url": {"url": "https://example.test/a.png"}}]}]})
 
-    assert vision.models == ["vision", "vision"]
+    assert vision.models == ["vision"]
     assert text.models == []
 
 
@@ -45,8 +48,26 @@ async def test_image_generation_selects_image_generation_route():
 
     await gateway.complete({"model": "auto", "prompt": "a lake", "task": "image_generation"})
 
-    assert image.models == ["image", "image"]
+    assert image.models == ["image"]
     assert chat.models == []
+
+
+@pytest.mark.asyncio
+async def test_image_generation_rejects_response_without_image_data():
+    class MalformedImageAdapter:
+        async def complete(self, payload):
+            return {"created": 1, "choices": [{"message": {"content": "not an image"}}]}
+
+    route = ModelRoute(
+        id="image", provider_id="p", remote_model="image", priority=1,
+        capabilities=frozenset({"image_generation"}),
+    )
+    gateway = ModelGateway([route], {route.id: MalformedImageAdapter()})
+
+    with pytest.raises(ProviderError) as error:
+        await gateway.complete({"model": "auto", "prompt": "a lake", "task": "image_generation"})
+
+    assert error.value.kind == "empty_output"
 
 
 @pytest.mark.asyncio
@@ -63,5 +84,5 @@ async def test_long_context_request_selects_long_context_route():
 
     await gateway.complete({"model": "auto", "messages": [{"role": "user", "content": "x" * 40000}]})
 
-    assert long_context.models == ["long", "long"]
+    assert long_context.models == ["long"]
     assert short_context.models == []

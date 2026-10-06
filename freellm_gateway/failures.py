@@ -8,8 +8,8 @@ it can recover on its own. The taxonomy:
     permission_error      quota_exhausted   network_error  invalid_request
     model_unavailable     unknown
 
-Plus ``empty_output`` — a probe-specific outcome for HTTP 200 responses that
-carry no text content.
+Plus ``empty_output`` — an HTTP 200 response that contains no usable text or
+tool-call result.
 """
 
 import re

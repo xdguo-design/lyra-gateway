@@ -56,22 +56,18 @@ class SequenceStreamAdapter:
 
 
 @pytest.mark.asyncio
-async def test_auto_demotes_route_after_real_invalid_request_and_promotes_successful_fallback():
+async def test_auto_fails_over_on_rate_limit_and_promotes_successful_fallback():
     routes = [
         ModelRoute(id="groq", provider_id="groq", remote_model="openai/gpt-oss-120b", priority=1),
         ModelRoute(id="qwen", provider_id="alibaba", remote_model="Qwen/Qwen3.8-27B", priority=2),
     ]
-    successful_probe = {"choices": [{"message": {"content": "probe ok"}}]}
     successful_completion = {"id": "qwen-result", "choices": [{"message": {"content": "pong"}}]}
     persisted = []
     gateway = ModelGateway(
         routes,
         {
-            "groq": SequenceAdapter(
-                successful_probe,
-                ProviderError("invalid_request", 400, "unsupported request", retriable=False),
-            ),
-            "qwen": SequenceAdapter(successful_probe, successful_completion),
+            "groq": SequenceAdapter(ProviderError("rate_limit", 429, safe_to_retry=True)),
+            "qwen": SequenceAdapter(successful_completion),
         },
         on_route_changed=persisted.append,
     )
@@ -79,14 +75,43 @@ async def test_auto_demotes_route_after_real_invalid_request_and_promotes_succes
     result = await gateway.complete({"model": "auto", "messages": [{"role": "user", "content": "hello"}]})
 
     assert result["id"] == "qwen-result"
-    assert len(gateway.adapters["groq"].calls) == 2
-    assert len(gateway.adapters["qwen"].calls) == 2
+    assert len(gateway.adapters["groq"].calls) == 1
+    assert len(gateway.adapters["qwen"].calls) == 1
     assert [(route.id, route.priority) for route in gateway.routes] == [("qwen", 1), ("groq", 2)]
     assert {route.id: route.priority for route in persisted} == {"qwen": 1, "groq": 2}
 
 
 @pytest.mark.asyncio
-async def test_auto_stream_preflight_failure_skips_route_and_promotes_successful_route():
+async def test_auto_does_not_retry_after_an_empty_completion():
+    routes = [
+        ModelRoute(id="empty", provider_id="provider-a", remote_model="empty-model", priority=1),
+        ModelRoute(id="usable", provider_id="provider-b", remote_model="usable-model", priority=2),
+    ]
+    empty_response = {"choices": [{"message": {"content": ""}, "finish_reason": "stop"}]}
+    empty_adapter = SequenceAdapter(empty_response)
+    usable_adapter = SequenceAdapter({"id": "usable-result", "choices": [{"message": {"content": "draft text"}}]})
+    connection_log = []
+    gateway = ModelGateway(
+        routes,
+        {"empty": empty_adapter, "usable": usable_adapter},
+        on_connection_logged=connection_log.append,
+    )
+
+    with pytest.raises(ProviderError) as error:
+        await gateway.complete({"model": "auto", "messages": [{"role": "user", "content": "write a paragraph"}]})
+
+    assert error.value.kind == "empty_output"
+    assert len(empty_adapter.calls) == 1
+    assert empty_adapter.calls[0]["messages"][0]["content"] == "write a paragraph"
+    assert len(usable_adapter.calls) == 0
+    assert gateway.route("empty").health == HealthStatus.FAILED
+    assert [(entry["route_id"], entry["status"], entry.get("error_kind")) for entry in connection_log] == [
+        ("empty", "failed", "empty_output"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_auto_stream_safely_retries_a_rate_limit_without_probe():
     routes = [
         ModelRoute(id="groq", provider_id="groq", remote_model="openai/gpt-oss-120b", priority=1),
         ModelRoute(id="qwen", provider_id="alibaba", remote_model="Qwen/Qwen3.8-27B", priority=2),
@@ -95,8 +120,8 @@ async def test_auto_stream_preflight_failure_skips_route_and_promotes_successful
     gateway = ModelGateway(
         routes,
         {
-            "groq": SequenceStreamAdapter([]),
-            "qwen": SequenceStreamAdapter([b"data: probe\n\n"], [b"data: result\n\n"]),
+            "groq": SequenceStreamAdapter(ProviderError("rate_limit", 429, safe_to_retry=True)),
+            "qwen": SequenceStreamAdapter([b"data: result\n\n"]),
         },
         on_route_changed=persisted.append,
     )
@@ -105,13 +130,13 @@ async def test_auto_stream_preflight_failure_skips_route_and_promotes_successful
 
     assert chunks == [b"data: result\n\n"]
     assert len(gateway.adapters["groq"].calls) == 1
-    assert len(gateway.adapters["qwen"].calls) == 2
+    assert len(gateway.adapters["qwen"].calls) == 1
     assert [(route.id, route.priority) for route in gateway.routes] == [("qwen", 1), ("groq", 2)]
     assert {route.id: route.priority for route in persisted} == {"qwen": 1, "groq": 2}
 
 
 @pytest.mark.asyncio
-async def test_auto_preflight_preserves_gpt_oss_model_and_reasoning_parameters():
+async def test_auto_request_preserves_gpt_oss_model_and_reasoning_parameters():
     route = ModelRoute(
         id="groq",
         provider_id="groq",
@@ -119,10 +144,7 @@ async def test_auto_preflight_preserves_gpt_oss_model_and_reasoning_parameters()
         priority=1,
         reasoning_effort="medium",
     )
-    adapter = SequenceAdapter(
-        {"choices": [{"message": {"content": "probe ok"}}]},
-        {"id": "result", "choices": [{"message": {"content": "pong"}}]},
-    )
+    adapter = SequenceAdapter({"id": "result", "choices": [{"message": {"content": "pong"}}]})
     gateway = ModelGateway([route], {route.id: adapter})
 
     result = await gateway.complete({
@@ -132,13 +154,46 @@ async def test_auto_preflight_preserves_gpt_oss_model_and_reasoning_parameters()
     })
 
     assert result["id"] == "result"
-    assert [payload["model"] for payload in adapter.calls] == [
-        "openai/gpt-oss-120b",
-        "openai/gpt-oss-120b",
+    assert [payload["model"] for payload in adapter.calls] == ["openai/gpt-oss-120b"]
+    assert adapter.calls[0]["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_auto_sends_user_request_without_a_separate_probe():
+    route = ModelRoute(id="primary", provider_id="p", remote_model="m", priority=1)
+    adapter = SequenceAdapter({
+        "id": "result",
+        "choices": [{"message": {"content": "answer"}}],
+    })
+    gateway = ModelGateway([route], {route.id: adapter})
+
+    result = await gateway.complete({
+        "model": "auto",
+        "messages": [{"role": "user", "content": "answer this"}],
+    })
+
+    assert result["id"] == "result"
+    assert len(adapter.calls) == 1
+    assert adapter.calls[0]["messages"][0]["content"] == "answer this"
+
+
+@pytest.mark.asyncio
+async def test_auto_does_not_replay_a_rejected_user_request_on_another_route():
+    routes = [
+        ModelRoute(id="first", provider_id="p1", remote_model="m1", priority=1),
+        ModelRoute(id="second", provider_id="p2", remote_model="m2", priority=2),
     ]
-    assert adapter.calls[0]["max_tokens"] == 64
-    assert adapter.calls[0]["reasoning_effort"] == "medium"
-    assert adapter.calls[1]["reasoning_effort"] == "high"
+    first = FakeAdapter(error=ProviderError("invalid_request", 400, retriable=False))
+    second = FakeAdapter(response={"id": "fallback", "choices": [{"message": {"content": "ok"}}]})
+    gateway = ModelGateway(routes, {"first": first, "second": second})
+
+    with pytest.raises(ProviderError) as error:
+        await gateway.complete({"model": "auto", "messages": []})
+
+    assert error.value.kind == "invalid_request"
+    assert first.calls == 1
+    assert second.calls == 0
+    assert gateway.route("first").health == HealthStatus.HEALTHY
 
 
 @pytest.mark.asyncio
@@ -148,7 +203,7 @@ async def test_gateway_fails_over_in_priority_order():
         ModelRoute(id="second", provider_id="p2", remote_model="m2", priority=2),
     ]
     adapters = {
-        "first": FakeAdapter(error=ProviderError("rate_limit", 429)),
+        "first": FakeAdapter(error=ProviderError("rate_limit", 429, safe_to_retry=True)),
         "second": FakeAdapter(response={"id": "fallback", "choices": [{"message": {"content": "ok"}}]}),
     }
     gateway = ModelGateway(routes, adapters)
@@ -157,7 +212,7 @@ async def test_gateway_fails_over_in_priority_order():
 
     assert result["id"] == "fallback"
     assert adapters["first"].calls == 1
-    assert adapters["second"].calls == 2
+    assert adapters["second"].calls == 1
 
 
 @pytest.mark.asyncio
@@ -165,7 +220,7 @@ async def test_gateway_returns_503_error_when_all_candidates_fail():
     routes = [ModelRoute(id="only", provider_id="p1", remote_model="m1", priority=1)]
     gateway = ModelGateway(
         routes,
-        {"only": FakeAdapter(error=ProviderError("provider_5xx", 500))},
+        {"only": FakeAdapter(error=ProviderError("rate_limit", 429, safe_to_retry=True))},
     )
 
     with pytest.raises(ProviderError) as error:
@@ -181,7 +236,7 @@ async def test_gateway_marks_failed_route_and_skips_it_on_next_request():
         ModelRoute(id="second", provider_id="p2", remote_model="m2", priority=2),
     ]
     adapters = {
-        "first": FakeAdapter(error=ProviderError("rate_limit", 429)),
+        "first": FakeAdapter(error=ProviderError("rate_limit", 429, safe_to_retry=True)),
         "second": FakeAdapter(response={"id": "fallback", "choices": [{"message": {"content": "ok"}}]}),
     }
     gateway = ModelGateway(routes, adapters, policies={"first": RoutePolicy(backoff_schedule=(60, 300))})
@@ -214,7 +269,7 @@ async def test_authentication_error_disables_route_persists_and_fails_over():
     gateway = ModelGateway(
         routes,
         {
-            "bad": FakeAdapter(error=ProviderError("authentication_error", 401, retriable=False)),
+            "bad": FakeAdapter(error=ProviderError("authentication_error", 401, retriable=False, safe_to_retry=True)),
             "good": FakeAdapter(response={"id": "fallback", "choices": [{"message": {"content": "ok"}}]}),
         },
         on_route_changed=persisted.append,
@@ -240,7 +295,7 @@ async def test_authentication_error_during_probe_disables_route_but_network_erro
     gateway = ModelGateway(
         [auth_route, network_route],
         {
-            "auth": FakeAdapter(error=ProviderError("authentication_error", 401, retriable=False)),
+            "auth": FakeAdapter(error=ProviderError("authentication_error", 401, retriable=False, safe_to_retry=True)),
             "network": FakeAdapter(error=ProviderError("network_error", 502, retriable=True)),
         },
         on_route_changed=persisted.append,
@@ -259,7 +314,7 @@ async def test_authentication_error_during_probe_disables_route_but_network_erro
 
 
 @pytest.mark.asyncio
-async def test_gateway_fails_over_when_provider_returns_empty_completion():
+async def test_gateway_does_not_retry_after_an_empty_completion():
     routes = [
         ModelRoute(id="unstable", provider_id="p1", remote_model="unstable", priority=1),
         ModelRoute(id="alibaba", provider_id="p2", remote_model="Qwen/Qwen3.8-27B", priority=2),
@@ -273,15 +328,16 @@ async def test_gateway_fails_over_when_provider_returns_empty_completion():
     }
     gateway = ModelGateway(routes, adapters)
 
-    result = await gateway.complete({"model": "auto", "messages": []})
+    with pytest.raises(ProviderError) as error:
+        await gateway.complete({"model": "auto", "messages": []})
 
-    assert result["id"] == "good"
+    assert error.value.kind == "empty_output"
     assert adapters["unstable"].calls == 1
-    assert adapters["alibaba"].calls == 2
+    assert adapters["alibaba"].calls == 0
 
 
 @pytest.mark.asyncio
-async def test_gateway_fails_over_when_provider_returns_empty_stream():
+async def test_gateway_does_not_retry_after_an_empty_stream():
     routes = [
         ModelRoute(id="unstable", provider_id="p1", remote_model="unstable", priority=1),
         ModelRoute(id="alibaba", provider_id="p2", remote_model="Qwen/Qwen3.8-27B", priority=2),
@@ -291,13 +347,14 @@ async def test_gateway_fails_over_when_provider_returns_empty_stream():
         "alibaba": StreamAdapter([b"data: pong\n\n"]),
     })
 
-    chunks = [chunk async for chunk in gateway.stream({"model": "auto", "messages": []})]
+    with pytest.raises(ProviderError) as error:
+        [chunk async for chunk in gateway.stream({"model": "auto", "messages": []})]
 
-    assert chunks == [b"data: pong\n\n"]
+    assert error.value.kind == "empty_output"
 
 
 @pytest.mark.asyncio
-async def test_gateway_fails_over_when_provider_raises_protocol_error():
+async def test_gateway_does_not_retry_after_an_unclassified_protocol_error():
     routes = [
         ModelRoute(id="broken", provider_id="p1", remote_model="broken", priority=1),
         ModelRoute(id="alibaba", provider_id="p2", remote_model="Qwen/Qwen3.8-27B", priority=2),
@@ -307,9 +364,11 @@ async def test_gateway_fails_over_when_provider_raises_protocol_error():
         "alibaba": FakeAdapter(response={"id": "good", "choices": [{"message": {"content": "pong"}}]}),
     })
 
-    result = await gateway.complete({"model": "auto", "messages": []})
+    with pytest.raises(ProviderError) as error:
+        await gateway.complete({"model": "auto", "messages": []})
 
-    assert result["id"] == "good"
+    assert error.value.kind == "provider_protocol_error"
+    assert gateway.adapters["alibaba"].calls == 0
 
 
 @pytest.mark.asyncio

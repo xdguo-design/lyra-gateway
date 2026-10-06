@@ -515,10 +515,10 @@ class Repository:
             connection.execute(
                 """INSERT INTO usage_records(
                    request_id, tenant_id, application_id, route_id, provider_id,
-                   remote_model, prompt_tokens, completion_tokens, total_tokens,
-                   elapsed_ms, stream, status, estimated_cost_micros,
-                   cost_currency, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    remote_model, prompt_tokens, completion_tokens, total_tokens,
+                    elapsed_ms, stream, status, estimated_cost_micros,
+                    cost_currency, usage_source, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     record.request_id,
                     record.tenant_id,
@@ -534,6 +534,7 @@ class Repository:
                     record.status,
                     record.estimated_cost_micros,
                     record.cost_currency,
+                    record.usage_source,
                     record.created_at,
                 ),
             )
@@ -541,15 +542,19 @@ class Repository:
     def save_usage_from_connection(self, entry: dict) -> UsageRecord | None:
         usage = entry.get("usage")
         if not isinstance(usage, dict):
-            return None
+            usage = {}
         prompt_tokens = usage.get("prompt_tokens")
         completion_tokens = usage.get("completion_tokens")
         total_tokens = usage.get("total_tokens")
-        if not any(isinstance(value, int) for value in (prompt_tokens, completion_tokens, total_tokens)):
-            return None
+        has_usage = any(isinstance(value, int) and not isinstance(value, bool) for value in (
+            prompt_tokens, completion_tokens, total_tokens
+        ))
         prompt = prompt_tokens if isinstance(prompt_tokens, int) else 0
         completion = completion_tokens if isinstance(completion_tokens, int) else 0
         total = total_tokens if isinstance(total_tokens, int) else prompt + completion
+        usage_source = entry.get("usage_source")
+        if usage_source not in {"provider", "estimated", "estimated_partial", "unknown"}:
+            usage_source = "provider" if has_usage else "unknown"
         route_id = entry.get("route_id") if isinstance(entry.get("route_id"), str) else None
         estimated_cost_micros, cost_currency = self._estimate_usage_cost(
             route_id,
@@ -572,6 +577,7 @@ class Repository:
             estimated_cost_micros=estimated_cost_micros,
             cost_currency=cost_currency,
             created_at=datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            usage_source=usage_source,
         )
         self.save_usage_record(record)
         return record
@@ -632,7 +638,9 @@ class Repository:
                      COALESCE(SUM(u.total_tokens), 0) AS total_tokens,
                      COALESCE(AVG(u.elapsed_ms), 0) AS avg_latency_ms,
                      SUM(CASE WHEN u.estimated_cost_micros IS NOT NULL THEN 1 ELSE 0 END) AS priced_calls,
-                     SUM(CASE WHEN u.estimated_cost_micros IS NULL THEN 1 ELSE 0 END) AS unpriced_calls
+                     SUM(CASE WHEN u.estimated_cost_micros IS NULL THEN 1 ELSE 0 END) AS unpriced_calls,
+                     SUM(CASE WHEN u.usage_source IN ('estimated', 'estimated_partial') THEN 1 ELSE 0 END) AS estimated_usage_calls,
+                     SUM(CASE WHEN u.usage_source = 'unknown' THEN 1 ELSE 0 END) AS unknown_usage_calls
                    FROM usage_records u
                    WHERE {where}""",
                 params,
@@ -856,6 +864,8 @@ class Repository:
             "avg_latency_ms": round(float(totals["avg_latency_ms"] or 0), 1),
             "priced_calls": int(totals["priced_calls"] or 0),
             "unpriced_calls": int(totals["unpriced_calls"] or 0),
+            "estimated_usage_calls": int(totals["estimated_usage_calls"] or 0),
+            "unknown_usage_calls": int(totals["unknown_usage_calls"] or 0),
             **costs,
             "quota_period": quota_status["period"],
             "selected_quota": selected_quota,

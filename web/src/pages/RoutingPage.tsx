@@ -2,7 +2,7 @@ import { useI18n } from "../i18n";
 import type { Route } from "../types";
 
 export function RoutingPage({ routes }: { routes: Route[] }) {
-  const { t } = useI18n();
+  const { t, status } = useI18n();
   const capabilities = Array.from(new Set(routes.flatMap((route) => route.capabilities))).sort();
   return (
     <div className="stack">
@@ -17,8 +17,14 @@ export function RoutingPage({ routes }: { routes: Route[] }) {
         <div className="section-head"><div><h2>{t("routing.title")}</h2><p>{t("routing.desc")}</p></div></div>
         <div className="cap-grid">
           {capabilities.map((capability) => {
-            const candidates = routes.filter((route) => route.enabled && route.capabilities.includes(capability)).sort((a, b) => a.priority - b.priority);
-            return <article key={capability}><h3>{capability}</h3>{candidates.map((route) => <div className="candidate" key={route.id}><b>#{route.priority}</b><span>{route.remote_model}</span><small>{route.provider_name}</small></div>)}</article>;
+            const candidates = routes.filter((route) => route.capabilities.includes(capability)).sort((a, b) => a.priority - b.priority);
+            return <article key={capability}>
+              <h3>{capability}</h3>
+              {candidates.map((route) => <div className={`candidate ${route.enabled ? "" : "unavailable"}`} key={route.id}>
+                <b>#{route.priority}</b><span>{route.remote_model}</span><small>{route.provider_name}</small>
+                <span className={`badge ${!route.enabled ? "muted-badge" : route.health === "healthy" ? "ok" : "warn"}`}>{status(route.enabled ? route.health : "disabled")}</span>
+              </div>)}
+            </article>;
           })}
           {!capabilities.length && <p className="empty">{t("routing.empty")}</p>}
         </div>

@@ -1,4 +1,5 @@
 from dataclasses import replace
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 import json
 from hashlib import sha1
@@ -9,6 +10,7 @@ import re
 import sqlite3
 from urllib.parse import urlparse
 from typing import Annotated
+from uuid import uuid4
 
 import httpx
 
@@ -82,7 +84,28 @@ def create_app(
     if repository is not None:
         gateway.on_route_changed = repository.save_route
     _resequence_routes(gateway, repository)
-    app = FastAPI(title="FreeLLM Gateway")
+    async def close_adapter(adapter) -> None:
+        close = getattr(adapter, "aclose", None)
+        if close is not None:
+            await close()
+
+    async def close_if_unreferenced(adapter) -> None:
+        if adapter is not None and not any(current is adapter for current in gateway.adapters.values()):
+            await close_adapter(adapter)
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        try:
+            yield
+        finally:
+            seen: set[int] = set()
+            for adapter in gateway.adapters.values():
+                if id(adapter) in seen:
+                    continue
+                seen.add(id(adapter))
+                await close_adapter(adapter)
+
+    app = FastAPI(title="FreeLLM Gateway", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
@@ -203,6 +226,7 @@ def create_app(
                 "last_first_token_ms": state.last_first_token_ms if state else None,
                 "last_total_ms": state.last_total_ms if state else None,
                 "last_error_kind": state.last_error_kind if state else None,
+                "last_error_detail": state.last_error_detail if state else None,
                 "last_error_retryable": state.last_error_retryable if state else None,
                 "last_is_quota": state.last_is_quota if state else False,
                 "last_is_transient": state.last_is_transient if state else False,
@@ -211,16 +235,23 @@ def create_app(
         }
 
     async def refresh_provider_adapters(provider: Provider) -> None:
+        previous_adapters = []
         for route in list(gateway.routes):
             if route.provider_id != provider.id:
                 continue
             previous = gateway.adapters.pop(route.id, None)
-            if previous is not None and hasattr(previous, "aclose"):
-                await previous.aclose()
+            if previous is not None:
+                previous_adapters.append(previous)
             if app.state.secrets is not None:
                 adapter = adapter_for_route(route, provider, app.state.secrets)
                 if adapter is not None:
                     gateway.adapters[route.id] = adapter
+        seen: set[int] = set()
+        for previous in previous_adapters:
+            if id(previous) in seen:
+                continue
+            seen.add(id(previous))
+            await close_if_unreferenced(previous)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -584,28 +615,63 @@ def create_app(
         ] = None,
     ):
         identity = require_token(authorization, x_free_llm_token)
+        request_id = uuid4().hex
+        response.headers["X-Request-ID"] = request_id
         usage_context = {
             "tenant_id": identity.tenant_id,
             "application_id": identity.application_id,
+            "request_id": request_id,
         }
         _require_known_model(payload.get("model", "auto"), gateway)
         capability = infer_capability(payload)
         quota_check = _quota_preflight(repository, gateway, identity, payload, capability)
+        projection = quota_check["usage_projection"]
+        if projection["usage_estimate_available"]:
+            usage_context["usage_estimate"] = {
+                "prompt_tokens": projection["projected_prompt_tokens"],
+                "completion_tokens": projection["projected_completion_tokens"],
+                "total_tokens": projection["projected_tokens"],
+                "source": "estimated" if projection["token_projection_complete"] else "estimated_partial",
+            }
         quota_headers = _quota_response_headers(quota_check)
         reservation_id = quota_check.get("reservation_id")
         if payload.get("stream"):
+            stream = gateway.stream(payload, usage_context=usage_context)
+            try:
+                first_chunk = await anext(stream)
+            except StopAsyncIteration as error:
+                if repository is not None:
+                    repository.release_quota_reservation(reservation_id)
+                raise HTTPException(status_code=502, detail="empty_output") from error
+            except ProviderError as error:
+                if repository is not None:
+                    repository.release_quota_reservation(reservation_id)
+                raise HTTPException(status_code=error.status_code, detail=error.kind) from error
+
             async def quota_stream():
                 try:
-                    async for chunk in gateway.stream(payload, usage_context=usage_context):
+                    yield first_chunk
+                    async for chunk in stream:
                         yield chunk
+                except ProviderError as error:
+                    event = {
+                        "error": {
+                            "message": "upstream stream failed",
+                            "type": "gateway_error",
+                            "code": error.kind,
+                        }
+                    }
+                    body = json.dumps(event, separators=(",", ":"))
+                    yield f"event: error\ndata: {body}\n\n".encode("utf-8")
                 finally:
+                    await stream.aclose()
                     if repository is not None:
                         repository.release_quota_reservation(reservation_id)
 
             return StreamingResponse(
                 quota_stream(),
                 media_type="text/event-stream",
-                headers=quota_headers,
+                headers={**quota_headers, "X-Request-ID": request_id},
             )
         try:
             result = await gateway.complete(
@@ -645,6 +711,14 @@ def create_app(
             payload,
             "image_generation",
         )
+        projection = quota_check["usage_projection"]
+        if projection["usage_estimate_available"]:
+            usage_context["usage_estimate"] = {
+                "prompt_tokens": projection["projected_prompt_tokens"],
+                "completion_tokens": projection["projected_completion_tokens"],
+                "total_tokens": projection["projected_tokens"],
+                "source": "estimated" if projection["token_projection_complete"] else "estimated_partial",
+            }
         reservation_id = quota_check.get("reservation_id")
         try:
             result = await gateway.complete(
@@ -805,7 +879,7 @@ def create_app(
             await adapter.aclose()
 
     @app.patch("/api/admin/routes/{route_id}")
-    def admin_update_route(route_id: str, payload: dict, request: Request, authorization: Annotated[str | None, Header()] = None):
+    async def admin_update_route(route_id: str, payload: dict, request: Request, authorization: Annotated[str | None, Header()] = None):
         require_admin(request, authorization)
         try:
             current = gateway.route(route_id)
@@ -859,26 +933,45 @@ def create_app(
                 raise HTTPException(status_code=503, detail="secret storage is not configured")
             updates["credential_ref"] = app.state.secrets.save(route_id, credential)
         updated = replace(current, **updates)
-        adapter = gateway.adapters.get(route_id)
-        if repository and app.state.secrets and updated.credential_ref:
+        previous_adapter = gateway.adapters.get(route_id)
+        adapter = previous_adapter
+        adapter_configuration_changed = (
+            credential is not None
+            or provider_id != current.provider_id
+            or ("endpoint" in updates and updates["endpoint"] != current.endpoint)
+        )
+        if (
+            repository
+            and app.state.secrets
+            and updated.credential_ref
+            and adapter_configuration_changed
+        ):
             provider = next((item for item in repository.list_providers() if item.id == updated.provider_id), None)
             adapter = adapter_for_route(updated, provider, app.state.secrets)
-        gateway.replace_route(updated, adapter)
+        if adapter is None:
+            gateway.adapters.pop(route_id, None)
+            gateway.replace_route(updated)
+        else:
+            gateway.replace_route(updated, adapter)
+        if previous_adapter is not adapter:
+            await close_if_unreferenced(previous_adapter)
         if repository:
             repository.save_route(gateway.route(route_id))
         _resequence_routes(gateway, repository, route_id, updated.priority)
         return route_json(gateway.route(route_id))
 
     @app.delete("/api/admin/routes/{route_id}", status_code=204)
-    def admin_delete_route(route_id: str, request: Request, authorization: Annotated[str | None, Header()] = None):
+    async def admin_delete_route(route_id: str, request: Request, authorization: Annotated[str | None, Header()] = None):
         require_admin(request, authorization)
         try:
+            adapter = gateway.adapters.get(route_id)
             gateway.remove_route(route_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="route not found") from error
         if repository:
             repository.delete_route(route_id)
         _resequence_routes(gateway, repository)
+        await close_if_unreferenced(adapter)
 
     @app.post("/api/admin/routes/{route_id}/probe")
     async def admin_probe_route(route_id: str, request: Request, authorization: Annotated[str | None, Header()] = None):
@@ -1370,9 +1463,12 @@ def _estimate_request_quota_projection(
     if capability == "image_generation":
         return {
             "projected_tokens": 0,
+            "projected_prompt_tokens": 0,
+            "projected_completion_tokens": 0,
             "projected_costs": {},
             "cost_projection_complete": False,
             "token_projection_complete": True,
+            "usage_estimate_available": False,
         }
 
     serialized = json.dumps(
@@ -1410,9 +1506,12 @@ def _estimate_request_quota_projection(
 
     return {
         "projected_tokens": projected_tokens,
+        "projected_prompt_tokens": input_tokens,
+        "projected_completion_tokens": output_tokens,
         "projected_costs": projected_costs,
         "cost_projection_complete": cost_complete,
         "token_projection_complete": output_complete,
+        "usage_estimate_available": True,
     }
 
 
@@ -1423,6 +1522,7 @@ def _quota_preflight(
     payload: dict,
     capability: str,
 ) -> dict:
+    projection = _estimate_request_quota_projection(payload, gateway, capability)
     if repository is None:
         return {
             "allowed": True,
@@ -1430,8 +1530,8 @@ def _quota_preflight(
             "warnings": [],
             "checks": [],
             "period": None,
+            "usage_projection": projection,
         }
-    projection = _estimate_request_quota_projection(payload, gateway, capability)
     check = repository.reserve_quota(
         identity.tenant_id,
         identity.application_id,
@@ -1442,6 +1542,7 @@ def _quota_preflight(
     )
     for item in check.get("checks", []):
         item["token_projection_complete"] = projection["token_projection_complete"]
+    check["usage_projection"] = projection
     if check.get("allowed"):
         return check
 

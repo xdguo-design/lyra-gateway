@@ -89,6 +89,7 @@ class Database:
                     status TEXT NOT NULL,
                     estimated_cost_micros INTEGER,
                     cost_currency TEXT,
+                    usage_source TEXT NOT NULL DEFAULT 'unknown',
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_usage_created_at ON usage_records(created_at);
@@ -129,6 +130,7 @@ class Database:
                 "route_id": "TEXT",
                 "estimated_cost_micros": "INTEGER",
                 "cost_currency": "TEXT",
+                "usage_source": "TEXT NOT NULL DEFAULT 'unknown'",
             }
             for name, ddl in usage_additions.items():
                 if name not in usage_columns:

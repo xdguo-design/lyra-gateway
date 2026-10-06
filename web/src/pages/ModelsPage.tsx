@@ -39,6 +39,9 @@ type MultiConnection = {
   error: string;
 };
 
+type ModelWorkspace = "models" | "providers" | "bulk" | "logs";
+const modelWorkspaceIds: ModelWorkspace[] = ["models", "providers", "bulk", "logs"];
+
 const blankProvider = (): ProviderDraft => ({
   id: "",
   name: "",
@@ -110,6 +113,16 @@ export function ModelsPage({
   onRefresh: () => Promise<void>;
 }) {
   const { t, status, errorText } = useI18n();
+  const [workspace, setWorkspace] = useState<ModelWorkspace>("models");
+  const [routeEditorOpen, setRouteEditorOpen] = useState(false);
+  const [providerFilter, setProviderFilter] = useState("all");
+  const [healthFilter, setHealthFilter] = useState("all");
+  const [capabilityFilter, setCapabilityFilter] = useState("all");
+  const [logProviderFilter, setLogProviderFilter] = useState("all");
+  const [logModelFilter, setLogModelFilter] = useState("all");
+  const [logResultFilter, setLogResultFilter] = useState("all");
+  const [logTimeFilter, setLogTimeFilter] = useState("all");
+  const [logVisibleCount, setLogVisibleCount] = useState(10);
   const [draft, setDraft] = useState<RouteDraft>(blankRoute);
   const [editing, setEditing] = useState<string | null>(null);
   const [customProvider, setCustomProvider] = useState<ProviderDraft>(blankProvider);
@@ -121,6 +134,14 @@ export function ModelsPage({
   const [multiConnections, setMultiConnections] = useState<MultiConnection[]>([]);
 
   const ordered = useMemo(() => [...routes].sort((a, b) => a.priority - b.priority), [routes]);
+  const filteredRoutes = useMemo(() => ordered.filter((route) => {
+    if (providerFilter !== "all" && route.provider_id !== providerFilter) return false;
+    if (healthFilter === "healthy" && (!route.enabled || route.health !== "healthy")) return false;
+    if (healthFilter === "attention" && route.enabled && route.health === "healthy") return false;
+    if (capabilityFilter !== "all" && !route.capabilities.includes(capabilityFilter)) return false;
+    return true;
+  }), [ordered, providerFilter, healthFilter, capabilityFilter]);
+  const capabilityOptions = useMemo(() => [...new Set(ordered.flatMap((route) => route.capabilities))].sort(), [ordered]);
   const routesByProvider = useMemo(() => {
     const grouped = new Map<string, Route[]>();
     for (const route of ordered) {
@@ -128,6 +149,18 @@ export function ModelsPage({
     }
     return grouped;
   }, [ordered]);
+  const filteredConnections = useMemo(() => connections.filter((entry) => {
+    if (logProviderFilter !== "all" && entry.provider_id !== logProviderFilter) return false;
+    if (logModelFilter !== "all" && entry.requested_model !== logModelFilter) return false;
+    if (logResultFilter !== "all" && entry.status !== logResultFilter) return false;
+    if (logTimeFilter !== "all") {
+      const timestamp = Date.parse(entry.timestamp ?? "");
+      if (!Number.isFinite(timestamp) || timestamp < Date.now() - Number(logTimeFilter) * 86_400_000) return false;
+    }
+    return true;
+  }), [connections, logModelFilter, logProviderFilter, logResultFilter, logTimeFilter]);
+  const logProviders = useMemo(() => [...new Set(connections.map((entry) => entry.provider_id).filter((value): value is string => Boolean(value)))].sort(), [connections]);
+  const logModels = useMemo(() => [...new Set(connections.map((entry) => entry.requested_model).filter((value): value is string => Boolean(value)))].sort(), [connections]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(CATALOG_DRAFT_KEY);
@@ -152,6 +185,7 @@ export function ModelsPage({
         }
       });
       setEditing(null);
+      setRouteEditorOpen(true);
       setCustomProvider(catalog.provider);
       setDraft({
         ...blankRoute(),
@@ -180,6 +214,8 @@ export function ModelsPage({
   }
 
   function edit(route: Route) {
+    setWorkspace("models");
+    setRouteEditorOpen(true);
     setEditing(route.id);
     setModelOptions([]);
     setSelectedModels([]);
@@ -285,6 +321,7 @@ export function ModelsPage({
       setEditing(null);
       setModelOptions([]);
       setSelectedModels([]);
+      setRouteEditorOpen(false);
       setMessage(t("models.routeSaved"));
       await onRefresh();
     } catch (error) {
@@ -486,19 +523,49 @@ export function ModelsPage({
     <div className="stack">
       {message && <div className="notice">{message}</div>}
 
-      <section className="card">
-        <div className="section-head">
-          <div><h2>{t("models.title")}</h2><p>{t("models.desc")}</p></div>
-          <div className="actions"><button onClick={() => void probeAll()}>{t("models.probeAll")}</button><button className="primary" onClick={() => { setEditing(null); setDraft(blankRoute()); }}>{t("models.add")}</button></div>
+      <div className="workspace-tabs" role="tablist" aria-label={t("models.workspaces")}>
+        {modelWorkspaceIds.map((id) => (
+          <button key={id} id={`workspace-tab-${id}`} role="tab" aria-selected={workspace === id}
+            aria-controls={`workspace-panel-${id}`} className={workspace === id ? "active" : ""}
+            onClick={() => setWorkspace(id)}>{t(`models.workspace.${id}`)}</button>
+        ))}
+      </div>
+
+      <section role="tabpanel" id="workspace-panel-models" aria-labelledby="workspace-tab-models" hidden={workspace !== "models"}>
+        <div className="stat-grid models-summary" aria-label={t("models.summary")}>
+          <article className="card stat"><b>{ordered.length}</b><span>{t("models.configuredCount")}</span></article>
+          <article className="card stat"><b>{ordered.filter((route) => route.enabled).length}</b><span>{t("models.enabledCount")}</span></article>
+          <article className="card stat"><b>{ordered.filter((route) => route.enabled && route.health === "healthy").length}</b><span>{t("models.healthyCount")}</span></article>
+          <article className="card stat"><b>{ordered.filter((route) => !route.enabled || route.health !== "healthy").length}</b><span>{t("models.attentionCount")}</span></article>
         </div>
-        <div className="table-wrap"><table><thead><tr><th>#</th><th>{t("common.model")}</th><th>{t("common.provider")}</th><th>{t("common.capability")}</th><th>{t("common.pricePerMillion")}</th><th>{t("common.runtimeStatus")}</th><th>{t("common.catalogStatus")}</th><th>{t("common.actions")}</th></tr></thead>
-          <tbody>{ordered.map((route, index) => <tr key={route.id}>
+        <section className="card model-list-card">
+        <div className="section-head">
+          <div><p>{t("models.desc")}</p></div>
+          <div className="actions"><button onClick={() => void probeAll()}>{t("models.probeAll")}</button><button className="primary" onClick={() => { setWorkspace("models"); setEditing(null); setDraft(blankRoute()); setRouteEditorOpen(true); }}>{t("models.add")}</button></div>
+        </div>
+        <div className="filter-grid model-filters">
+          <label>{t("models.filterProvider")}<select aria-label={t("models.filterProvider")} value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}>
+            <option value="all">{t("models.filterAllProviders")}</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+          </select></label>
+          <label>{t("models.filterStatus")}<select aria-label={t("models.filterStatus")} value={healthFilter} onChange={(event) => setHealthFilter(event.target.value)}>
+            <option value="all">{t("models.filterAllStatuses")}</option><option value="healthy">{t("models.filterHealthy")}</option><option value="attention">{t("models.filterAttention")}</option>
+          </select></label>
+          <label>{t("models.filterCapability")}<select aria-label={t("models.filterCapability")} value={capabilityFilter} onChange={(event) => setCapabilityFilter(event.target.value)}>
+            <option value="all">{t("models.filterAllCapabilities")}</option>{capabilityOptions.map((capability) => <option key={capability} value={capability}>{capability}</option>)}
+          </select></label>
+        </div>
+        <div className="table-wrap"><table data-testid="model-routes"><thead><tr><th>#</th><th>{t("common.model")}</th><th>{t("common.provider")}</th><th>{t("common.capability")}</th><th>{t("common.pricePerMillion")}</th><th>{t("common.runtimeStatus")}</th><th>{t("common.catalogStatus")}</th><th>{t("common.actions")}</th></tr></thead>
+          <tbody>{filteredRoutes.map((route) => <tr key={route.id}>
+            {(() => { const index = ordered.findIndex((item) => item.id === route.id); return <>
             <td>{route.priority}</td>
             <td><b>{route.display_name || route.remote_model}</b><small>{route.remote_model}</small></td>
             <td>{route.provider_name}</td>
             <td>{route.capabilities.map((cap) => <span className="tag" key={cap}>{cap}</span>)}</td>
             <td>{route.pricing.input_per_million == null && route.pricing.output_per_million == null ? "—" : `${route.pricing.currency} ${route.pricing.input_per_million ?? "?"} / ${route.pricing.output_per_million ?? "?"}`}</td>
-            <td><span className={`badge ${!route.enabled ? "muted-badge" : route.health === "healthy" ? "ok" : "warn"}`}>{status(route.enabled ? route.health : "disabled")}</span></td>
+            <td>
+              <span className={`badge ${!route.enabled ? "muted-badge" : route.health === "healthy" ? "ok" : "warn"}`}>{status(route.enabled ? route.health : "disabled")}</span>
+              {route.health_detail?.last_error_detail && <small title={route.health_detail.last_error_detail}>{route.health_detail.last_error_detail}</small>}
+            </td>
             <td><span className={`badge ${route.catalog_status === "published" ? "ok" : "muted-badge"}`}>{status(route.catalog_status)}</span></td>
             <td><div className="actions">
               <button onClick={() => void move(index, -1)}>↑</button><button onClick={() => void move(index, 1)}>↓</button>
@@ -506,11 +573,13 @@ export function ModelsPage({
               <button onClick={() => void mutate(route, "toggle")}>{route.enabled ? t("common.disable") : t("common.enable")}</button>
               <button className="danger" onClick={() => void mutate(route, "delete")}>{t("common.delete")}</button>
             </div></td>
-          </tr>)}{!ordered.length && <tr><td colSpan={8} className="empty">{t("models.empty")}</td></tr>}</tbody>
+            </>; })()}
+          </tr>)}{!filteredRoutes.length && <tr><td colSpan={8} className="empty">{ordered.length ? t("models.noFilterResults") : t("models.empty")}</td></tr>}</tbody>
         </table></div>
+        </section>
       </section>
 
-      <section className="provider-grid-react">
+      <section className="provider-grid-react" role="tabpanel" id="workspace-panel-providers" aria-labelledby="workspace-tab-providers" hidden={workspace !== "providers"}>
         {providers.map((provider) => {
           const providerRoutes = routesByProvider.get(provider.id) ?? [];
           return <article className="card provider-card" key={provider.id}>
@@ -524,10 +593,11 @@ export function ModelsPage({
             </div>
           </article>;
         })}
+        {!providers.length && <p className="empty card">{t("models.noProviders")}</p>}
       </section>
 
-      <section className="grid-two model-editor-grid">
-        <form className="card form-card" onSubmit={saveRoute}>
+      <section className="grid-two model-editor-grid" hidden={workspace !== "models" && workspace !== "providers"}>
+        <form className="card form-card" onSubmit={saveRoute} hidden={workspace !== "models" || !routeEditorOpen}>
           <div className="section-head"><div><h2>{editing ? t("models.editTitle") : t("models.addBulkTitle")}</h2><p>{t("models.editorDesc")}</p></div><button type="button" onClick={() => { setDraft((current) => ({ ...current, provider_id: CUSTOM_PROVIDER_ID })); setCustomProvider(atomGitPreset(t("models.atomgitProviderName"))); }}>{t("models.atomgitPreset")}</button></div>
           <div className="form-grid">
             <label>{t("common.provider")}<select required value={draft.provider_id} onChange={(event) => {
@@ -559,7 +629,7 @@ export function ModelsPage({
           </div>}
         </form>
 
-        <form className="card form-card" onSubmit={saveProvider}>
+        <form className="card form-card" onSubmit={saveProvider} hidden={workspace !== "providers"}>
           <div className="section-head"><div><h2>{t(editingProviderId ? "models.providerEditTitle" : "models.providerAddTitle")}</h2><p>{t(editingProviderId ? "models.providerEditDesc" : "models.providerAddDesc")}</p></div></div>
           <ProviderFields value={providerDraft} onChange={setProviderDraft} prefix="provider-form" idReadOnly={Boolean(editingProviderId)} />
           <div className="form-actions">
@@ -570,7 +640,7 @@ export function ModelsPage({
         </form>
       </section>
 
-      <section className="card">
+      <section className="card" role="tabpanel" id="workspace-panel-bulk" aria-labelledby="workspace-tab-bulk" hidden={workspace !== "bulk"}>
         <div className="section-head"><div><h2>{t("models.multiTitle")}</h2><p>{t("models.multiDesc")}</p></div><div className="actions"><button onClick={() => addMultiConnection()}>{t("models.addCustomConnection")}</button>{providers.slice(0, 4).map((provider) => <button key={provider.id} onClick={() => addMultiConnection(provider)}>＋ {provider.name}</button>)}</div></div>
         <div className="multi-grid">
           {multiConnections.map((item) => <article className="connection-card" key={item.key}>
@@ -585,12 +655,28 @@ export function ModelsPage({
         {!!multiConnections.length && <div className="form-actions"><button className="primary" onClick={() => void saveMultiConnections()}>{t("models.bulkSaveConnections")}</button></div>}
       </section>
 
-      <section className="card">
+      <section className="card" role="tabpanel" id="workspace-panel-logs" aria-labelledby="workspace-tab-logs" hidden={workspace !== "logs"}>
         <div className="section-head"><div><h2>{t("models.logTitle")}</h2><p>{t("models.logDesc")}</p></div></div>
-        <div className="table-wrap"><table><thead><tr><th>{t("models.request")}</th><th>{t("models.route")}</th><th>{t("overview.tenantApp")}</th><th>{t("common.result")}</th><th>{t("common.latency")}</th><th>{t("common.token")}</th></tr></thead><tbody>
-          {connections.map((entry, index) => <tr key={entry.request_id ?? index}><td><code>{entry.request_id ?? "—"}</code><small>{entry.requested_model ?? ""}</small></td><td>{entry.provider_id ?? "—"}<small>{entry.remote_model ?? ""}</small></td><td>{entry.tenant_id ?? "system"}<small>{entry.application_id ?? "legacy-global"}</small></td><td><span className={`badge ${entry.status === "success" ? "ok" : "bad"}`}>{status(entry.status)}</span></td><td>{entry.elapsed_ms == null ? "—" : `${entry.elapsed_ms} ms`}</td><td>{formatCount(entry.usage?.total_tokens)}</td></tr>)}
-          {!connections.length && <tr><td colSpan={6} className="empty">{t("models.noLogs")}</td></tr>}
+        <div className="filter-grid model-filters log-filters">
+          <label>{t("models.filterProvider")}<select aria-label={t("models.filterProvider")} value={logProviderFilter} onChange={(event) => setLogProviderFilter(event.target.value)}>
+            <option value="all">{t("models.filterAllProviders")}</option>{logProviders.map((provider) => <option value={provider} key={provider}>{provider}</option>)}
+          </select></label>
+          <label>{t("models.filterModel")}<select aria-label={t("models.filterModel")} value={logModelFilter} onChange={(event) => setLogModelFilter(event.target.value)}>
+            <option value="all">{t("models.filterAllModels")}</option>{logModels.map((model) => <option value={model} key={model}>{model}</option>)}
+          </select></label>
+          <label>{t("models.filterResult")}<select aria-label={t("models.filterResult")} value={logResultFilter} onChange={(event) => setLogResultFilter(event.target.value)}>
+            <option value="all">{t("models.filterAllResults")}</option><option value="success">{status("success")}</option><option value="error">{status("error")}</option>
+          </select></label>
+          <label>{t("models.filterTime")}<select aria-label={t("models.filterTime")} value={logTimeFilter} onChange={(event) => setLogTimeFilter(event.target.value)}>
+            <option value="all">{t("models.filterAnyTime")}</option><option value="1">{t("models.last24h")}</option><option value="7">{t("models.last7d")}</option><option value="30">{t("models.last30d")}</option>
+          </select></label>
+        </div>
+        <p className="log-count">{t("models.logCount", { shown: Math.min(logVisibleCount, filteredConnections.length), total: filteredConnections.length })}</p>
+        <div className="table-wrap"><table data-testid="request-log-table"><thead><tr><th>{t("models.request")}</th><th>{t("models.route")}</th><th>{t("overview.tenantApp")}</th><th>{t("common.result")}</th><th>{t("common.latency")}</th><th>{t("common.token")}</th></tr></thead><tbody>
+          {filteredConnections.slice(0, logVisibleCount).map((entry, index) => <tr key={entry.request_id ?? index}><td><code>{entry.request_id ?? "—"}</code><small>{entry.requested_model ?? ""}</small></td><td>{entry.provider_id ?? "—"}<small>{entry.remote_model ?? ""}</small></td><td>{entry.tenant_id ?? "system"}<small>{entry.application_id ?? "legacy-global"}</small></td><td><span className={`badge ${entry.status === "success" ? "ok" : "bad"}`}>{status(entry.status)}</span></td><td>{entry.elapsed_ms == null ? "—" : `${entry.elapsed_ms} ms`}</td><td>{formatCount(entry.usage?.total_tokens)}</td></tr>)}
+          {!filteredConnections.length && <tr><td colSpan={6} className="empty">{t("models.noLogs")}</td></tr>}
         </tbody></table></div>
+        {logVisibleCount < filteredConnections.length && <div className="form-actions"><button onClick={() => setLogVisibleCount((count) => count + 10)}>{t("models.loadMore")}</button></div>}
       </section>
     </div>
   );

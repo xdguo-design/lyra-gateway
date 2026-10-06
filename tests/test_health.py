@@ -55,7 +55,7 @@ def test_backoff_escalates_with_consecutive_failures_and_caps():
     assert state.cooldown_until == 4 + 7200  # stays at the cap
 
 
-def test_non_retryable_failures_bench_route_without_cooldown():
+def test_non_retryable_failures_are_temporarily_benched_and_can_recover():
     state = record_probe(
         state=HealthState(),
         result=ProbeResult(ok=False, error_kind="authentication_error", error_retryable=False),
@@ -63,8 +63,10 @@ def test_non_retryable_failures_bench_route_without_cooldown():
         policy=RoutePolicy(),
     )
     assert state.status == HealthStatus.FAILED
-    assert state.cooldown_until is None
-    assert not is_eligible(state, now=100000)
+    assert state.cooldown_until == 70
+    assert not is_eligible(state, now=69)
+    assert is_eligible(state, now=70)
+    assert effective_status(state, now=70) == HealthStatus.HEALTHY
     assert state.last_error_retryable is False
 
 
@@ -133,6 +135,19 @@ def test_probe_success_clears_a_benched_route():
     assert revived.status == HealthStatus.HEALTHY
     assert revived.cooldown_until is None
     assert is_eligible(revived, now=50)
+
+
+def test_failed_route_becomes_eligible_after_cooldown_for_a_trial_request():
+    state = record_probe(
+        HealthState(),
+        ProbeResult(ok=False, error_kind="provider_protocol_error"),
+        now=10,
+        policy=RoutePolicy(backoff_schedule=(20,)),
+    )
+
+    assert not is_eligible(state, now=29)
+    assert is_eligible(state, now=30)
+    assert effective_status(state, now=30) == HealthStatus.HEALTHY
 
 
 def test_cooldown_revsives_to_healthy_via_effective_status():

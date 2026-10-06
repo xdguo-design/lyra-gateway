@@ -103,3 +103,4 @@ class UsageRecord:
     estimated_cost_micros: int | None
     cost_currency: str | None
     created_at: str
+    usage_source: str = "unknown"
