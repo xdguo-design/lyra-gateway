@@ -61,7 +61,7 @@ th { color: var(--muted); font-size: 11px; }
 td small { display: block; color: var(--muted); margin-top: 3px; }
 .empty { padding: 32px 10px !important; text-align: center; color: var(--muted); }
 .tag { display: inline-block; border: 1px solid #2f6cb1; color: #89c6ff; border-radius: 5px; padding: 2px 5px; margin: 2px; font-size: 10px; }
-.notice { border: 1px solid #5e7393; background: #132038; border-radius: 10px; padding: 11px 13px; }
+.notice { border: 1px solid #5e7393; background: #132038; border-radius: 10px; padding: 11px 13px; white-space: pre-line; }
 .notice small { display: block; margin-top: 4px; }
 .provider-list, .compact-list { display: grid; gap: 8px; }
 .provider-list > div, .compact-list > div { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--line); padding: 9px 0; }
@@ -115,6 +115,10 @@ label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
 .provider-models > div { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }
 .provider-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding: 11px; margin: 12px 0; border: 1px solid var(--line); background: var(--panel2); border-radius: 10px; }
 .provider-fields label:nth-child(4), .provider-fields label:nth-child(5) { grid-column: 1 / -1; }
+.form-subheading { margin: 14px 0 0; font-size: 13px; }
+.advanced-fields { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); }
+.advanced-fields summary { color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 650; }
+.advanced-fields[open] summary { margin-bottom: 12px; }
 .bulk-picker-react { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
 .check-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 6px; max-height: 260px; overflow: auto; }
 .check-grid label { display: flex; gap: 7px; align-items: center; color: var(--text); padding: 7px; border: 1px solid var(--line); border-radius: 7px; }
@@ -122,6 +126,11 @@ label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; }
 .connection-card > label { margin-top: 10px; }
 .catalog-meta { display: grid; gap: 5px; margin: 10px 0; font-size: 11px; color: var(--muted); }
 .catalog-meta span { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 6px; }
+.catalog-guide { margin: 10px 0; padding: 9px 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); font-size: 12px; }
+.catalog-guide summary { color: var(--accent); cursor: pointer; font-weight: 650; }
+.catalog-guide-prerequisites { margin-top: 9px; }
+.catalog-guide-prerequisites ul, .catalog-guide-steps { margin: 5px 0 0; padding-left: 20px; }
+.catalog-guide-steps { display: grid; gap: 5px; margin-top: 9px; }
 @media (max-width: 1100px) {
   .stat-grid.six { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .quota-editor, .filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

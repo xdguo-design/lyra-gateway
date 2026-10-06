@@ -23,6 +23,18 @@ export function slugify(value: string): string {
     .slice(0, 64) || "provider";
 }
 
+export function splitCatalogModelNames(value: string): string[] {
+  return [...new Set(value.split(/\s*·\s*/).map((model) => model.trim()).filter(Boolean))];
+}
+
+export function capabilitiesForCatalogModel(model: string, fallback: string[] = ["chat"]): string[] {
+  const normalized = model.toLowerCase();
+  if (normalized.includes("image")) return ["image_generation"];
+  if (normalized.includes("video")) return ["video_generation"];
+  const runtimeCapabilities = fallback.filter((capability) => capability !== "model_api");
+  return runtimeCapabilities.length ? runtimeCapabilities : ["chat"];
+}
+
 export function baseUrlFromEndpoint(endpoint: string): string {
   const url = new URL(endpoint);
   const knownSuffixes = ["/chat/completions", "/messages", "/images/generations"];
@@ -62,10 +74,13 @@ export function providerFromCatalogOffer(offer: CatalogOffer): ProviderDraft {
 }
 
 export function catalogRouteDraft(offer: CatalogOffer) {
+  const remoteModels = splitCatalogModelNames(String(offer.model || "").trim());
+  const primaryModel = remoteModels[0] ?? "";
   return {
     provider: providerFromCatalogOffer(offer),
-    remote_model: String(offer.model || "").trim(),
-    display_name: String(offer.name || offer.model || "").trim(),
+    remote_model: primaryModel,
+    remote_models: remoteModels,
+    display_name: String(offer.name || primaryModel).trim(),
     capabilities: Array.isArray(offer.capabilities) && offer.capabilities.length
       ? offer.capabilities.filter((item): item is string => typeof item === "string")
       : ["chat"],

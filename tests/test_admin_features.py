@@ -113,6 +113,50 @@ def test_admin_can_save_custom_provider_and_route(tmp_path):
     assert "secret" not in response.text
 
 
+def test_admin_splits_a_multi_model_route_into_individual_routes(tmp_path):
+    repository = Repository(Database(tmp_path / "gateway.sqlite3"))
+    repository.initialize()
+    provider = Provider("p", "Provider", "openai", "https://api.example.test/v1", "https://example.test")
+    repository.save_provider(provider)
+    secrets = FakeSecrets()
+    credential_ref = secrets.save("aggregate", "api-key")
+    source = ModelRoute(
+        id="aggregate-route", provider_id="p", remote_model="chat-a · image-b · chat-a",
+        priority=1, capabilities=frozenset({"model_api"}), credential_ref=credential_ref,
+    )
+    following = ModelRoute(id="following", provider_id="p", remote_model="other", priority=2)
+    repository.save_route(source)
+    repository.save_route(following)
+    gateway = ModelGateway([source, following], {})
+    client = TestClient(create_app(
+        gateway, repository=repository, secrets=secrets, api_token="api", admin_token="admin",
+    ))
+
+    response = client.post(
+        "/api/admin/routes/aggregate-route/split",
+        headers={"Authorization": "Bearer admin"},
+        json={"models": [
+            {"remote_model": "chat-a", "capabilities": ["chat"]},
+            {"remote_model": "image-b", "capabilities": ["image_generation"]},
+            {"remote_model": "chat-a", "capabilities": ["chat"]},
+        ]},
+    )
+
+    assert response.status_code == 200
+    assert [route.remote_model for route in gateway.routes] == ["chat-a", "image-b", "other"]
+    assert [route.priority for route in gateway.routes] == [1, 2, 3]
+    assert gateway.routes[0].id == "aggregate-route"
+    assert [route.capabilities for route in gateway.routes[:2]] == [frozenset({"chat"}), frozenset({"image_generation"})]
+    assert all(route.credential_ref == credential_ref for route in gateway.routes[:2])
+    assert response.json()["data"]["skipped"] == []
+    assert response.json()["data"]["validation"] == {"passed": 0, "failed": 1, "not_tested": 1}
+    assert response.json()["data"]["results"] == [
+        {"remote_model": "chat-a", "status": "failed", "error": "missing_adapter"},
+        {"remote_model": "image-b", "status": "not_tested", "reason": "capability_not_supported_by_probe"},
+    ]
+    assert [route.remote_model for route in repository.list_routes()] == ["chat-a", "image-b", "other"]
+
+
 def test_admin_provider_update_refreshes_runtime_adapter_and_delete_requires_no_routes(tmp_path):
     repository = Repository(Database(tmp_path / "gateway.sqlite3"))
     repository.initialize()
@@ -428,7 +472,10 @@ def test_admin_can_read_the_freellm_discovery_catalog(monkeypatch):
     client, _ = make_client(catalog_source="https://freellm.top/data/offers.json")
 
     async def fake_fetch(source):
-        return [{"id": "groq-free", "productType": "api", "name": "Groq free plan"}]
+        return [{
+            "id": "groq-free", "productType": "api", "name": "Groq free plan",
+            "registerLabel": "打开免费模型页", "registerLabelEn": "Open free model page",
+        }]
 
     monkeypatch.setattr("freellm_gateway.api.fetch_public_catalog", fake_fetch)
     response = client.get(
@@ -438,6 +485,8 @@ def test_admin_can_read_the_freellm_discovery_catalog(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["data"][0]["id"] == "groq-free"
+    assert response.json()["data"][0]["registerLabel"] == "打开免费模型页"
+    assert response.json()["data"][0]["registerLabelEn"] == "Open free model page"
 
 
 def test_admin_catalog_marks_exact_enabled_disabled_and_unmatched_pool_status(tmp_path, monkeypatch):

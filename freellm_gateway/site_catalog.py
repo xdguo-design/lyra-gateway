@@ -7,7 +7,7 @@ import httpx
 
 PUBLIC_FIELDS = (
     "id", "order", "date", "name", "providerMark", "provider", "model", "modelMeta",
-    "productType", "capabilities", "usageGuide", "register", "registerLabel", "docsUrl",
+    "productType", "capabilities", "usageGuide", "register", "registerLabel", "registerLabelEn", "docsUrl",
     "apiEndpoint", "freeSummary", "validitySummary", "accessSummary", "badges",
     "originCountry", "availability", "freeMechanism", "quota", "renewal", "lastVerifiedAt",
 )

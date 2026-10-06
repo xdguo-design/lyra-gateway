@@ -192,6 +192,14 @@ export interface UsageSummary {
   by_day: UsageGroup[];
 }
 
+export interface CatalogUsageGuide {
+  prerequisites?: string[];
+  steps?: string[];
+  stepsEn?: string[];
+  summary?: string;
+  summaryEn?: string;
+}
+
 export interface CatalogOffer {
   id?: string;
   order?: number;
@@ -203,9 +211,10 @@ export interface CatalogOffer {
   modelMeta?: string;
   productType?: string;
   capabilities?: string[];
-  usageGuide?: unknown;
+  usageGuide?: CatalogUsageGuide;
   register?: string;
   registerLabel?: string;
+  registerLabelEn?: string;
   docsUrl?: string;
   apiEndpoint?: string;
   freeSummary?: string;

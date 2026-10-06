@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import {
   CATALOG_DRAFT_KEY,
   CUSTOM_PROVIDER_ID,
   atomGitPreset,
+  capabilitiesForCatalogModel,
   connectionKey,
+  splitCatalogModelNames,
   type ProviderDraft,
 } from "../features/models/connection";
 import { useI18n } from "../i18n";
@@ -83,11 +85,15 @@ function ProviderFields({
   onChange,
   prefix,
   idReadOnly = false,
+  focusBaseUrl = false,
+  showOfficialUrl = true,
 }: {
   value: ProviderDraft;
   onChange: (value: ProviderDraft) => void;
   prefix: string;
   idReadOnly?: boolean;
+  focusBaseUrl?: boolean;
+  showOfficialUrl?: boolean;
 }) {
   const { t } = useI18n();
   return (
@@ -95,8 +101,8 @@ function ProviderFields({
       <label>{t("common.providerId")}<input required readOnly={idReadOnly} value={value.id} onChange={(event) => onChange({ ...value, id: event.target.value })} /></label>
       <label>{t("common.name")}<input required value={value.name} onChange={(event) => onChange({ ...value, name: event.target.value })} /></label>
       <label>{t("common.protocol")}<select value={value.protocol} onChange={(event) => onChange({ ...value, protocol: event.target.value })}><option value="openai">OpenAI Compatible</option><option value="gemini">Gemini Native</option><option value="anthropic">Anthropic Native</option></select></label>
-      <label>{t("common.baseUrl")}<input required placeholder="https://api.example.com/v1" value={value.base_url} onChange={(event) => onChange({ ...value, base_url: event.target.value })} /></label>
-      <label>{t("common.officialSite")}<input required placeholder="https://example.com" value={value.official_url} onChange={(event) => onChange({ ...value, official_url: event.target.value })} /></label>
+      <label>{t("common.baseUrl")}<input required autoFocus={focusBaseUrl} placeholder="https://api.example.com/v1" value={value.base_url} onChange={(event) => onChange({ ...value, base_url: event.target.value })} /></label>
+      {showOfficialUrl && <label>{t("common.officialSite")}<input required placeholder="https://example.com" value={value.official_url} onChange={(event) => onChange({ ...value, official_url: event.target.value })} /></label>}
     </div>
   );
 }
@@ -115,6 +121,7 @@ export function ModelsPage({
   const { t, status, errorText } = useI18n();
   const [workspace, setWorkspace] = useState<ModelWorkspace>("models");
   const [routeEditorOpen, setRouteEditorOpen] = useState(false);
+  const routeEditorRef = useRef<HTMLFormElement>(null);
   const [providerFilter, setProviderFilter] = useState("all");
   const [healthFilter, setHealthFilter] = useState("all");
   const [capabilityFilter, setCapabilityFilter] = useState("all");
@@ -128,6 +135,7 @@ export function ModelsPage({
   const [customProvider, setCustomProvider] = useState<ProviderDraft>(blankProvider);
   const [modelOptions, setModelOptions] = useState<string[]>([]);
   const [selectedModels, setSelectedModels] = useState<string[]>([]);
+  const [catalogBatch, setCatalogBatch] = useState(false);
   const [message, setMessage] = useState("");
   const [providerDraft, setProviderDraft] = useState<ProviderDraft>(blankProvider);
   const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
@@ -163,6 +171,11 @@ export function ModelsPage({
   const logModels = useMemo(() => [...new Set(connections.map((entry) => entry.requested_model).filter((value): value is string => Boolean(value)))].sort(), [connections]);
 
   useEffect(() => {
+    if (!routeEditorOpen || workspace !== "models") return;
+    routeEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [routeEditorOpen, workspace, editing]);
+
+  useEffect(() => {
     const raw = sessionStorage.getItem(CATALOG_DRAFT_KEY);
     if (!raw) return;
     sessionStorage.removeItem(CATALOG_DRAFT_KEY);
@@ -172,11 +185,16 @@ export function ModelsPage({
         remote_model: string;
         display_name: string;
         capabilities: string[];
+        remote_models?: string[];
         public_url: string;
         public_docs_url: string;
         free_summary: string;
         has_endpoint: boolean;
       };
+      const remoteModels = (catalog.remote_models?.length
+        ? catalog.remote_models
+        : splitCatalogModelNames(catalog.remote_model)).filter((model) => model.trim());
+      const multiModelOffer = remoteModels.length > 1;
       const exactProvider = providers.find((provider) => {
         try {
           return catalog.provider.base_url && connectionKey(provider) === connectionKey(catalog.provider);
@@ -187,11 +205,14 @@ export function ModelsPage({
       setEditing(null);
       setRouteEditorOpen(true);
       setCustomProvider(catalog.provider);
+      setCatalogBatch(multiModelOffer);
+      setModelOptions(multiModelOffer ? remoteModels : []);
+      setSelectedModels(multiModelOffer ? remoteModels : []);
       setDraft({
         ...blankRoute(),
         provider_id: exactProvider?.id ?? CUSTOM_PROVIDER_ID,
-        remote_model: catalog.remote_model,
-        display_name: catalog.display_name,
+        remote_model: remoteModels[0] ?? catalog.remote_model,
+        display_name: multiModelOffer ? (remoteModels[0] ?? catalog.display_name) : catalog.display_name,
         capabilities: catalog.capabilities.join(","),
         public_url: catalog.public_url,
         public_docs_url: catalog.public_docs_url,
@@ -219,6 +240,7 @@ export function ModelsPage({
     setEditing(route.id);
     setModelOptions([]);
     setSelectedModels([]);
+    setCatalogBatch(false);
     setDraft({
       id: route.id,
       provider_id: route.provider_id,
@@ -268,7 +290,11 @@ export function ModelsPage({
       }
       return existing;
     }
-    return api<Provider>("/api/admin/providers", { method: "POST", body: providerPayload(provider) });
+    const payload = providerPayload(provider);
+    // The connection form intentionally hides catalog-only metadata. When no
+    // official site was supplied, use the Base URL origin as a safe default.
+    if (!payload.official_url) payload.official_url = new URL(payload.base_url).origin;
+    return api<Provider>("/api/admin/providers", { method: "POST", body: payload });
   }
 
   async function validateAndFetchModels() {
@@ -321,6 +347,7 @@ export function ModelsPage({
       setEditing(null);
       setModelOptions([]);
       setSelectedModels([]);
+      setCatalogBatch(false);
       setRouteEditorOpen(false);
       setMessage(t("models.routeSaved"));
       await onRefresh();
@@ -340,12 +367,74 @@ export function ModelsPage({
         method: "POST",
         body: {
           provider: providerPayload(provider),
-          models: selectedModels.map((remote_model) => ({ remote_model, enabled: true })),
+          models: selectedModels.map((remote_model) => ({
+            remote_model,
+            enabled: true,
+            ...(catalogBatch ? {
+              display_name: remote_model,
+              capabilities: capabilitiesForCatalogModel(remote_model, draft.capabilities.split(",").map((item) => item.trim()).filter(Boolean)),
+            } : {}),
+          })),
           ...routeCommonPayload(),
           ...(draft.credential.trim() ? { credential: draft.credential.trim() } : {}),
         },
       });
       setMessage(t("models.bulkDone", { created: result.data.created.length, skipped: result.data.skipped.length }));
+      if (catalogBatch) {
+        setRouteEditorOpen(false);
+        setCatalogBatch(false);
+        setModelOptions([]);
+        setSelectedModels([]);
+      }
+      await onRefresh();
+    } catch (error) {
+      setMessage(errorText(error));
+    }
+  }
+
+  async function splitRouteModels(route: Route) {
+    const modelNames = splitCatalogModelNames(route.remote_model);
+    if (modelNames.length < 2) return;
+    try {
+      const result = await api<{ data: {
+        created: Route[];
+        skipped: Array<{ remote_model: string }>;
+        validation: { passed: number; failed: number; not_tested: number };
+        results: Array<
+          | { remote_model: string; status: "passed" }
+          | { remote_model: string; status: "failed"; error: string }
+          | { remote_model: string; status: "not_tested"; reason: string }
+        >;
+      } }>(
+        `/api/admin/routes/${encodeURIComponent(route.id)}/split`,
+        {
+          method: "POST",
+          body: {
+            models: modelNames.map((remote_model) => ({
+              remote_model,
+              capabilities: capabilitiesForCatalogModel(remote_model, route.capabilities),
+            })),
+          },
+        },
+      );
+      const details = result.data.results.map((item) => {
+        const status = item.status === "failed"
+          ? t("models.validationFailed", { error: item.error })
+          : item.status === "not_tested"
+            ? t("models.validationNotTested")
+            : t("models.validationPassed");
+        return `${item.remote_model}：${status}`;
+      });
+      setMessage([
+        t("models.splitDone", {
+          created: result.data.created.length,
+          skipped: result.data.skipped.length,
+          passed: result.data.validation.passed,
+          failed: result.data.validation.failed,
+          notTested: result.data.validation.not_tested,
+        }),
+        ...details,
+      ].join("\n"));
       await onRefresh();
     } catch (error) {
       setMessage(errorText(error));
@@ -541,7 +630,7 @@ export function ModelsPage({
         <section className="card model-list-card">
         <div className="section-head">
           <div><p>{t("models.desc")}</p></div>
-          <div className="actions"><button onClick={() => void probeAll()}>{t("models.probeAll")}</button><button className="primary" onClick={() => { setWorkspace("models"); setEditing(null); setDraft(blankRoute()); setRouteEditorOpen(true); }}>{t("models.add")}</button></div>
+          <div className="actions"><button onClick={() => void probeAll()}>{t("models.probeAll")}</button><button className="primary" onClick={() => { setWorkspace("models"); setEditing(null); setDraft(blankRoute()); setCatalogBatch(false); setRouteEditorOpen(true); }}>{t("models.add")}</button></div>
         </div>
         <div className="filter-grid model-filters">
           <label>{t("models.filterProvider")}<select aria-label={t("models.filterProvider")} value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}>
@@ -569,6 +658,7 @@ export function ModelsPage({
             <td><span className={`badge ${route.catalog_status === "published" ? "ok" : "muted-badge"}`}>{status(route.catalog_status)}</span></td>
             <td><div className="actions">
               <button onClick={() => void move(index, -1)}>↑</button><button onClick={() => void move(index, 1)}>↓</button>
+              {splitCatalogModelNames(route.remote_model).length > 1 && <button onClick={() => void splitRouteModels(route)}>{t("models.splitModels")}</button>}
               <button onClick={() => edit(route)}>{t("common.edit")}</button><button onClick={() => void mutate(route, "probe")}>{t("common.probe")}</button>
               <button onClick={() => void mutate(route, "toggle")}>{route.enabled ? t("common.disable") : t("common.enable")}</button>
               <button className="danger" onClick={() => void mutate(route, "delete")}>{t("common.delete")}</button>
@@ -597,7 +687,7 @@ export function ModelsPage({
       </section>
 
       <section className="grid-two model-editor-grid" hidden={workspace !== "models" && workspace !== "providers"}>
-        <form className="card form-card" onSubmit={saveRoute} hidden={workspace !== "models" || !routeEditorOpen}>
+        <form ref={routeEditorRef} className="card form-card" onSubmit={saveRoute} hidden={workspace !== "models" || !routeEditorOpen}>
           <div className="section-head"><div><h2>{editing ? t("models.editTitle") : t("models.addBulkTitle")}</h2><p>{t("models.editorDesc")}</p></div><button type="button" onClick={() => { setDraft((current) => ({ ...current, provider_id: CUSTOM_PROVIDER_ID })); setCustomProvider(atomGitPreset(t("models.atomgitProviderName"))); }}>{t("models.atomgitPreset")}</button></div>
           <div className="form-grid">
             <label>{t("common.provider")}<select required value={draft.provider_id} onChange={(event) => {
@@ -607,21 +697,30 @@ export function ModelsPage({
               setDraft({ ...draft, provider_id: providerId, remote_model: groqPreset ? "openai/gpt-oss-120b" : draft.remote_model });
             }}><option value="">{t("common.select")}</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name} · {provider.protocol}</option>)}<option value={CUSTOM_PROVIDER_ID}>{t("models.customProvider")}</option></select></label>
             <label>{t("common.model")}<input list="provider-model-options" required value={draft.remote_model} onChange={(event) => setDraft({ ...draft, remote_model: event.target.value })} /><datalist id="provider-model-options">{modelOptions.map((model) => <option value={model} key={model} />)}</datalist></label>
-            <label>{t("models.displayName")}<input value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} /></label>
-            <label>{t("models.priority")}<input type="number" min={1} value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: Number(event.target.value) })} /></label>
-            <label>{t("models.capabilitiesCsv")}<input value={draft.capabilities} onChange={(event) => setDraft({ ...draft, capabilities: event.target.value })} /></label>
-            <label>{t("common.reasoningEffort")}<input placeholder="medium / high / low" value={draft.reasoning_effort} onChange={(event) => setDraft({ ...draft, reasoning_effort: event.target.value })} /></label>
-            <label>{t("models.inputPrice")}<input type="number" min="0" step="0.000001" value={draft.input_price_per_million} onChange={(event) => setDraft({ ...draft, input_price_per_million: event.target.value })} /></label>
-            <label>{t("models.outputPrice")}<input type="number" min="0" step="0.000001" value={draft.output_price_per_million} onChange={(event) => setDraft({ ...draft, output_price_per_million: event.target.value })} /></label>
-            <label>{t("common.currency")}<input value={draft.pricing_currency} maxLength={8} onChange={(event) => setDraft({ ...draft, pricing_currency: event.target.value })} /></label>
             <label>{t("models.apiKeyOnce")}<input type="password" value={draft.credential} onChange={(event) => setDraft({ ...draft, credential: event.target.value })} /></label>
-            <label>{t("models.publicRegister")}<input value={draft.public_url} onChange={(event) => setDraft({ ...draft, public_url: event.target.value })} /></label>
-            <label>{t("models.publicDocs")}<input value={draft.public_docs_url} onChange={(event) => setDraft({ ...draft, public_docs_url: event.target.value })} /></label>
-            <label>{t("common.catalogStatus")}<select value={draft.catalog_status} onChange={(event) => setDraft({ ...draft, catalog_status: event.target.value as "draft" | "published" })}><option value="draft">{t("models.catalogDraft")}</option><option value="published">{t("models.catalogPublished")}</option></select></label>
-            <label className="full">{t("models.freeSummary")}<input value={draft.free_summary} onChange={(event) => setDraft({ ...draft, free_summary: event.target.value })} /></label>
           </div>
-          {draft.provider_id === CUSTOM_PROVIDER_ID && <ProviderFields value={customProvider} onChange={setCustomProvider} prefix="custom-provider" />}
-          <div className="form-actions"><button type="button" onClick={() => void validateAndFetchModels()}>{t("models.validateFetch")}</button><button className="primary" type="submit">{t("models.saveCurrent")}</button></div>
+          {draft.provider_id === CUSTOM_PROVIDER_ID && <>
+            <h3 className="form-subheading">{t("models.customProviderConnection")}</h3>
+            <ProviderFields value={customProvider} onChange={setCustomProvider} prefix="custom-provider" focusBaseUrl={!customProvider.base_url} showOfficialUrl={false} />
+          </>}
+          <details className="advanced-fields">
+            <summary>{t("models.advancedSettings")}</summary>
+            <div className="form-grid">
+              <label>{t("models.displayName")}<input value={draft.display_name} onChange={(event) => setDraft({ ...draft, display_name: event.target.value })} /></label>
+              <label>{t("models.priority")}<input type="number" min={1} value={draft.priority} onChange={(event) => setDraft({ ...draft, priority: Number(event.target.value) })} /></label>
+              <label>{t("models.capabilitiesCsv")}<input value={draft.capabilities} onChange={(event) => setDraft({ ...draft, capabilities: event.target.value })} /></label>
+              <label>{t("common.reasoningEffort")}<input placeholder="medium / high / low" value={draft.reasoning_effort} onChange={(event) => setDraft({ ...draft, reasoning_effort: event.target.value })} /></label>
+              <label>{t("models.inputPrice")}<input type="number" min="0" step="0.000001" value={draft.input_price_per_million} onChange={(event) => setDraft({ ...draft, input_price_per_million: event.target.value })} /></label>
+              <label>{t("models.outputPrice")}<input type="number" min="0" step="0.000001" value={draft.output_price_per_million} onChange={(event) => setDraft({ ...draft, output_price_per_million: event.target.value })} /></label>
+              <label>{t("common.currency")}<input value={draft.pricing_currency} maxLength={8} onChange={(event) => setDraft({ ...draft, pricing_currency: event.target.value })} /></label>
+              <label>{t("models.publicRegister")}<input value={draft.public_url} onChange={(event) => setDraft({ ...draft, public_url: event.target.value })} /></label>
+              <label>{t("models.publicDocs")}<input value={draft.public_docs_url} onChange={(event) => setDraft({ ...draft, public_docs_url: event.target.value })} /></label>
+              <label>{t("common.catalogStatus")}<select value={draft.catalog_status} onChange={(event) => setDraft({ ...draft, catalog_status: event.target.value as "draft" | "published" })}><option value="draft">{t("models.catalogDraft")}</option><option value="published">{t("models.catalogPublished")}</option></select></label>
+              <label className="full">{t("models.freeSummary")}<input value={draft.free_summary} onChange={(event) => setDraft({ ...draft, free_summary: event.target.value })} /></label>
+              {draft.provider_id === CUSTOM_PROVIDER_ID && <label>{t("common.officialSite")}<input placeholder="https://example.com" value={customProvider.official_url} onChange={(event) => setCustomProvider({ ...customProvider, official_url: event.target.value })} /></label>}
+            </div>
+          </details>
+          <div className="form-actions"><button type="button" onClick={() => void validateAndFetchModels()}>{t("models.validateFetch")}</button>{!catalogBatch && <button className="primary" type="submit">{t("models.saveCurrent")}</button>}</div>
           {!!modelOptions.length && <div className="bulk-picker-react">
             <div className="section-head"><div><h3>{t("models.bulkTitle")}</h3><p>{t("models.bulkDesc")}</p></div><div className="actions"><button type="button" onClick={() => setSelectedModels(modelOptions)}>{t("models.selectAll")}</button><button type="button" onClick={() => setSelectedModels([])}>{t("models.selectNone")}</button></div></div>
             <div className="check-grid">{modelOptions.map((model) => <label key={model}><input type="checkbox" checked={selectedModels.includes(model)} onChange={(event) => setSelectedModels((current) => event.target.checked ? [...current, model] : current.filter((item) => item !== model))} />{model}</label>)}</div>

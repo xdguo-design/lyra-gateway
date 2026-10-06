@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   atomGitPreset,
   baseUrlFromEndpoint,
+  capabilitiesForCatalogModel,
   catalogRouteDraft,
   connectionKey,
   providerFromCatalogOffer,
+  splitCatalogModelNames,
 } from "./connection";
 
 describe("provider connection helpers", () => {
@@ -65,6 +67,15 @@ describe("provider connection helpers", () => {
     expect(draft.remote_model).toBe("m1");
     expect(draft.capabilities).toEqual(["chat", "vision"]);
     expect(draft.has_endpoint).toBe(true);
+  });
+
+  it("splits catalog bundles into individual model IDs", () => {
+    expect(splitCatalogModelNames("chat-a · image-b · chat-a")).toEqual(["chat-a", "image-b"]);
+    const draft = catalogRouteDraft({ provider: "Example", model: "chat-a · image-b", capabilities: ["model_api"] });
+    expect(draft.remote_model).toBe("chat-a");
+    expect(draft.remote_models).toEqual(["chat-a", "image-b"]);
+    expect(capabilitiesForCatalogModel("chat-a", ["model_api"])).toEqual(["chat"]);
+    expect(capabilitiesForCatalogModel("image-b", ["model_api"])).toEqual(["image_generation"]);
   });
 
   it("provides the local AtomGit preset", () => {

@@ -27,7 +27,7 @@ from .adapters.openai import OpenAICompatibleAdapter
 from .catalog import export_catalog, sync_catalog_to_site
 from .connection_log import ConnectionLogger
 from .discovery import discover_new_routes
-from .models import Provider, RequestIdentity, SUPPORTED_CATALOG_STATUSES, SUPPORTED_PROVIDER_PROTOCOLS
+from .models import HealthStatus, Provider, RequestIdentity, SUPPORTED_CATALOG_STATUSES, SUPPORTED_PROVIDER_PROTOCOLS
 from .model_registry import ModelRegistry
 from .network_safety import UnsafeProviderTarget, validate_provider_target
 from .repository import Repository
@@ -987,6 +987,111 @@ def create_app(
         if repository:
             repository.save_route(gateway.route(route_id))
         return route_json(gateway.route(route_id))
+
+    @app.post("/api/admin/routes/{route_id}/split")
+    async def admin_split_route(route_id: str, request: Request, payload: dict, authorization: Annotated[str | None, Header()] = None):
+        require_admin(request, authorization)
+        if repository is None:
+            raise HTTPException(status_code=503, detail="persistence is not configured")
+        try:
+            source = gateway.route(route_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="route not found") from error
+        models = payload.get("models")
+        if not isinstance(models, list) or not models:
+            raise HTTPException(status_code=422, detail="models must be a non-empty list")
+        normalized_models: list[tuple[str, frozenset[str], str]] = []
+        seen: set[str] = set()
+        for item in models:
+            if not isinstance(item, dict) or not isinstance(item.get("remote_model"), str) or not item["remote_model"].strip():
+                raise HTTPException(status_code=422, detail="each model must have a non-empty remote_model")
+            remote_model = item["remote_model"].strip()
+            identity = remote_model.casefold()
+            if identity in seen:
+                continue
+            seen.add(identity)
+            capabilities = item.get("capabilities", sorted(source.capabilities))
+            if not isinstance(capabilities, list) or not capabilities or any(not isinstance(value, str) or not value.strip() for value in capabilities):
+                raise HTTPException(status_code=422, detail="each model must have non-empty capabilities")
+            display_name = item.get("display_name", remote_model)
+            if not isinstance(display_name, str) or not display_name.strip():
+                display_name = remote_model
+            normalized_models.append((remote_model, frozenset(value.strip() for value in capabilities), display_name.strip()))
+
+        existing_models = {
+            route.remote_model.casefold(): route
+            for route in gateway.routes
+            if route.provider_id == source.provider_id and route.id != source.id
+        }
+        skipped = []
+        pending = []
+        for remote_model, capabilities, display_name in normalized_models:
+            if remote_model.casefold() in existing_models:
+                skipped.append({"remote_model": remote_model})
+                continue
+            pending.append((remote_model, capabilities, display_name))
+        if not pending:
+            return {"data": {"created": [], "skipped": skipped, "results": [], "validation": {"passed": 0, "failed": 0, "not_tested": 0}}}
+
+        provider = next((item for item in repository.list_providers() if item.id == source.provider_id), None)
+        if provider is None:
+            raise HTTPException(status_code=422, detail="provider must exist before splitting a route")
+        routes = []
+        for index, (remote_model, capabilities, display_name) in enumerate(pending):
+            new_id = source.id if index == 0 else _bulk_route_id(source.provider_id, remote_model)
+            if index > 0 and any(route.id == new_id for route in gateway.routes):
+                raise HTTPException(status_code=409, detail="a route with the split model id already exists")
+            routes.append(replace(
+                source,
+                id=new_id,
+                remote_model=remote_model,
+                display_name=display_name,
+                priority=source.priority + index,
+                capabilities=capabilities,
+                health=HealthStatus.HEALTHY,
+            ))
+
+        original_order = sorted(gateway.routes, key=lambda route: (route.priority, route.id))
+        source_index = next(index for index, route in enumerate(original_order) if route.id == source.id)
+        new_order = original_order[:source_index] + routes + original_order[source_index + 1:]
+        for route in routes:
+            repository.save_route(route)
+        first_route, *additional_routes = routes
+        gateway.replace_route(first_route)
+        for route in additional_routes:
+            adapter = adapter_for_route(route, provider, app.state.secrets) if app.state.secrets else None
+            gateway.add_route(route, adapter)
+        normalized_order = [replace(route, priority=index) for index, route in enumerate(new_order, 1)]
+        gateway.routes = normalized_order
+        for route in normalized_order:
+            repository.save_route(route)
+        results = []
+        for route in routes:
+            if "chat" not in route.capabilities:
+                results.append({
+                    "remote_model": route.remote_model,
+                    "status": "not_tested",
+                    "reason": "capability_not_supported_by_probe",
+                })
+                continue
+            try:
+                await gateway.probe(route.id)
+            except ProviderError as error:
+                results.append({"remote_model": route.remote_model, "status": "failed", "error": error.kind})
+            else:
+                results.append({"remote_model": route.remote_model, "status": "passed"})
+            repository.save_route(gateway.route(route.id))
+        validation = {
+            "passed": sum(result["status"] == "passed" for result in results),
+            "failed": sum(result["status"] == "failed" for result in results),
+            "not_tested": sum(result["status"] == "not_tested" for result in results),
+        }
+        return {"data": {
+            "created": [route_json(gateway.route(route.id)) for route in routes],
+            "skipped": skipped,
+            "results": results,
+            "validation": validation,
+        }}
 
     @app.post("/api/admin/routes", status_code=201)
     def admin_create_route(request: Request, payload: dict, authorization: Annotated[str | None, Header()] = None):

@@ -48,6 +48,21 @@ test("model management groups tasks into four workspaces", async ({ page }) => {
   await expect(page).toHaveURL(/#\/models$/);
 });
 
+test("editing a model scrolls the editor into view", async ({ page }) => {
+  await page.route(/\/api\/admin\/providers$/, (route) => route.fulfill({
+    json: { data: [{ id: "example", name: "Example", protocol: "openai", base_url: "https://example.test/v1", official_url: "https://example.test" }] },
+  }));
+  await page.route(/\/api\/admin\/routes$/, (route) => route.fulfill({
+    json: { data: [{ id: "example-chat", provider_id: "example", provider_name: "Example", remote_model: "example-chat", display_name: null, priority: 1, capabilities: ["chat"], enabled: true, health: "healthy", reasoning_effort: null, pricing: { currency: "USD", input_per_million: null, output_per_million: null }, public_url: null, public_docs_url: null, free_summary: null, catalog_status: "not_added" }] },
+  }));
+  await page.goto("/admin/#/models");
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await page.getByRole("row").filter({ hasText: "example-chat" }).getByRole("button", { name: "Edit" }).click();
+  const editor = page.getByRole("heading", { name: "Edit Model" }).locator("xpath=ancestor::form");
+  await expect(editor).toBeInViewport({ ratio: 0.1 });
+  await expect.poll(async () => (await editor.boundingBox())!.y).toBeLessThan(400);
+});
+
 test("model list filters routes by provider", async ({ page }) => {
   await page.route(/\/api\/admin\/providers$/, (route) => route.fulfill({
     json: { data: [{ id: "example", name: "Example", protocol: "openai", base_url: "https://example.test/v1", official_url: "https://example.test" }] },
@@ -98,21 +113,94 @@ test("request logs filter loaded records and reveal more rows on demand", async 
   await expect(table.locator("tbody tr")).toHaveCount(1);
 });
 
-test("catalog add confirms a model draft before continuing", async ({ page }) => {
+test("catalog add opens the prefilled model form and focuses a missing endpoint", async ({ page }) => {
   await page.goto("/admin/");
   await page.getByRole("button", { name: "EN", exact: true }).click();
   await page.route(/\/api\/admin\/catalog\/source\?scope=models/, (route) => route.fulfill({
     json: { data: [{ id: "e2e-model", name: "E2E Model", provider: "Example", model: "example-chat",
-      capabilities: ["chat"], apiEndpoint: "https://example.test/v1", register: "https://example.test/signup",
+      capabilities: ["chat"], register: "https://example.test/signup",
       docsUrl: "https://example.test/docs", freeSummary: "Free tier", pool_status: { state: "not_added" } }] },
   }));
   await page.goto("/admin/#/catalog");
-  await page.getByRole("button", { name: "Add to model pool" }).click();
-  await expect(page).toHaveURL(/#\/catalog$/);
-  await expect(page.getByRole("button", { name: "Continue configuration" })).toBeVisible();
-  await page.getByRole("button", { name: "Continue configuration" }).click();
+  await page.getByRole("button", { name: "Configure and add to Model Pool" }).click();
   await expect(page).toHaveURL(/#\/models$/);
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue("example-chat");
+  const customProvider = page.getByTestId("custom-provider");
+  await expect(customProvider.getByLabel("Base URL")).toBeFocused();
+  await expect(customProvider.getByLabel("Base URL")).toHaveAttribute("required", "");
+});
+
+test("catalog uses the source-provided registration label and canonical URL", async ({ page }) => {
+  const modelUrl = "https://vercel.com/ai-gateway/models/ling-3.1-flash-free";
+  await page.route(/\/api\/admin\/catalog\/source\?scope=models/, (route) => route.fulfill({ json: { data: [{
+    id: "ant-ling-3-1-flash-free", name: "Ling 3.1 Flash", provider: "Vercel AI Gateway", model: "inclusionai/ling-3.1-flash-free",
+    productType: "api", capabilities: ["model_api"], register: modelUrl,
+    registerLabel: "模型注册页", registerLabelEn: "Model registration page",
+  }] } }));
+  await page.goto("/admin/#/catalog");
+  const offer = page.locator(".catalog-card").filter({ hasText: "Ling 3.1 Flash" });
+  const registration = offer.getByRole("link", { name: "模型注册页 ↗" });
+  await expect(registration).toHaveAttribute("href", modelUrl);
+});
+
+test("catalog exposes model-specific registration steps on demand", async ({ page }) => {
+  const modelUrl = "https://vercel.com/ai-gateway/models/ling-3.1-flash-free";
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await page.route(/\/api\/admin\/catalog\/source\?scope=models/, (route) => route.fulfill({ json: { data: [{
+    id: "ant-ling-3-1-flash-free", name: "Ling 3.1 Flash", provider: "Vercel AI Gateway",
+    model: "inclusionai/ling-3.1-flash-free", capabilities: ["model_api"], register: modelUrl,
+    registerLabel: "模型注册页", registerLabelEn: "Model registration page",
+    usageGuide: {
+      prerequisites: ["Vercel account", "Vercel AI Gateway API key"],
+      steps: ["打开 Vercel AI Gateway 的 Ling 3.1 Flash (Free) 模型页并登录。", "创建 AI Gateway API Key。"],
+      stepsEn: ["Open the Ling 3.1 Flash (Free) model page and sign in.", "Create an AI Gateway API key."],
+    },
+  }] } }));
+  await page.goto("/admin/#/catalog");
+  const offer = page.locator(".catalog-card").filter({ hasText: "Ling 3.1 Flash" });
+  const steps = offer.getByText("Registration and access steps", { exact: true });
+  await expect(steps).toBeVisible();
+  await steps.click();
+  await expect(offer).toContainText("Vercel account");
+  await expect(offer).toContainText("Open the Ling 3.1 Flash (Free) model page and sign in.");
+  await expect(offer.getByRole("link", { name: "Model registration page ↗" })).toHaveAttribute("href", modelUrl);
+});
+
+test("catalog bundle opens as separate model routes", async ({ page }) => {
+  await page.goto("/admin/");
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await page.route(/\/api\/admin\/catalog\/source\?scope=models/, (route) => route.fulfill({
+    json: { data: [{ id: "e2e-bundle", name: "Example Bundle", provider: "Example", model: "chat-a · image-b",
+      capabilities: ["model_api"], apiEndpoint: "https://example.test/v1/chat/completions",
+      register: "https://example.test/signup", pool_status: { state: "not_added" } }] },
+  }));
+  await page.goto("/admin/#/catalog");
+  await page.getByRole("button", { name: "Configure and add to Model Pool" }).click();
+  await expect(page).toHaveURL(/#\/models$/);
+  await expect(page.getByLabel("Model", { exact: true })).toHaveValue("chat-a");
+  await expect(page.getByLabel("chat-a")).toBeChecked();
+  await expect(page.getByLabel("image-b")).toBeChecked();
+  await expect(page.getByRole("button", { name: "Save Selected (2)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save Model" })).toHaveCount(0);
+});
+
+test("splitting a bundled route shows per-model probe results", async ({ page }) => {
+  const route = { id: "bundle", provider_id: "example", provider_name: "Example", remote_model: "chat-a · image-b", display_name: "Bundle", priority: 1, capabilities: ["model_api"], enabled: true, health: "healthy", reasoning_effort: null, pricing: { currency: "USD", input_per_million: null, output_per_million: null }, public_url: null, public_docs_url: null, free_summary: null, catalog_status: "not_added" };
+  await page.route(/\/api\/admin\/providers$/, (request) => request.fulfill({ json: { data: [{ id: "example", name: "Example", protocol: "openai", base_url: "https://example.test/v1", official_url: "https://example.test" }] } }));
+  await page.route(/\/api\/admin\/routes$/, (request) => request.fulfill({ json: { data: [route] } }));
+  await page.route(/\/api\/admin\/routes\/bundle\/split$/, (request) => request.fulfill({ json: { data: {
+    created: [route], skipped: [], validation: { passed: 1, failed: 0, not_tested: 1 }, results: [
+      { remote_model: "chat-a", status: "passed" },
+      { remote_model: "image-b", status: "not_tested", reason: "capability_not_supported_by_probe" },
+    ],
+  } } }));
+  await page.goto("/admin/#/models");
+  await page.getByRole("button", { name: "EN", exact: true }).click();
+  await page.getByRole("row").filter({ hasText: "Bundle" }).getByRole("button", { name: "Split models" }).click();
+  await expect(page.locator(".notice")).toContainText("Probes passed 1, failed 0, not tested 1");
+  await expect(page.locator(".notice")).toContainText("chat-a：Probe passed");
+  await expect(page.locator(".notice")).toContainText("image-b：This capability cannot be probed automatically by this gateway");
 });
 
 test("catalog distinguishes loading from an empty result", async ({ page }) => {

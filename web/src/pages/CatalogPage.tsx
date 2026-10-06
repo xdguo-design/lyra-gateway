@@ -13,7 +13,7 @@ import { useI18n } from "../i18n";
 import type { CatalogOffer } from "../types";
 
 export function CatalogPage() {
-  const { t, status, errorText } = useI18n();
+  const { t, status, errorText, language } = useI18n();
   const [offers, setOffers] = useState<CatalogOffer[]>([]);
   const [search, setSearch] = useState("");
   const [origin, setOrigin] = useState<CatalogOriginFilter>("all");
@@ -22,7 +22,6 @@ export function CatalogPage() {
   const [pool, setPool] = useState<CatalogPoolFilter>("all");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-  const [pendingOffer, setPendingOffer] = useState<{ name: string; hasEndpoint: boolean } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -58,18 +57,12 @@ export function CatalogPage() {
   function addToPool(offer: CatalogOffer) {
     const draft = catalogRouteDraft(offer);
     sessionStorage.setItem(CATALOG_DRAFT_KEY, JSON.stringify(draft));
-    setPendingOffer({ name: draft.display_name || draft.remote_model, hasEndpoint: draft.has_endpoint });
+    window.location.hash = "/models";
   }
 
   return (
     <div className="stack">
       {message && <div className="notice">{message}</div>}
-      {pendingOffer && <div className={`notice catalog-handoff ${pendingOffer.hasEndpoint ? "ok" : "warn"}`} role="status">
-        <div><strong>{pendingOffer.hasEndpoint ? t("catalog.prefilled", { name: pendingOffer.name }) : t("catalog.endpointRequired", { name: pendingOffer.name })}</strong>
-          <small>{t("catalog.prefilledNotSaved")}</small></div>
-        <button className="primary" onClick={() => { window.location.hash = "/models"; }}>{t("catalog.continueConfiguration")}</button>
-        <button onClick={() => setPendingOffer(null)}>{t("common.cancel")}</button>
-      </div>}
       <section className="card">
         <div className="section-head">
           <div><h2>{t("catalog.title")}</h2><p>{t("catalog.desc")}</p></div>
@@ -129,6 +122,11 @@ export function CatalogPage() {
         <div className="catalog-grid" aria-busy={loading}>
           {filtered.map((offer, index) => {
             const region = catalogModelRegion(offer);
+            const guide = offer.usageGuide;
+            const localizedSteps = language === "en" && guide?.stepsEn?.length
+              ? guide.stepsEn
+              : guide?.steps ?? [];
+            const showGuide = Boolean(guide?.prerequisites?.length || localizedSteps.length);
             const regionLabel =
               region === "domestic"
                 ? t("catalog.originDomestic")
@@ -146,13 +144,29 @@ export function CatalogPage() {
                 </div>
                 <p>{String(offer.freeSummary ?? "")}</p>
                 <div>{offer.capabilities?.map((cap) => <span className="tag" key={cap}>{cap}</span>)}</div>
+                {showGuide && (
+                  <details className="catalog-guide">
+                    <summary>{t("catalog.registrationSteps")}</summary>
+                    {guide?.prerequisites?.length ? (
+                      <div className="catalog-guide-prerequisites">
+                        <strong>{t("catalog.prerequisites")}</strong>
+                        <ul>{guide.prerequisites.map((item, stepIndex) => <li key={`${stepIndex}-${item}`}>{item}</li>)}</ul>
+                      </div>
+                    ) : null}
+                    {localizedSteps.length ? (
+                      <ol className="catalog-guide-steps">
+                        {localizedSteps.map((item, stepIndex) => <li key={`${stepIndex}-${item}`}>{item}</li>)}
+                      </ol>
+                    ) : null}
+                  </details>
+                )}
                 <div className="catalog-meta">
                   <span>{t("common.model")} <code>{String(offer.model ?? "—")}</code></span>
                   <span>{t("common.endpoint")} <code>{String(offer.apiEndpoint ?? t("catalog.manualEndpoint"))}</code></span>
                 </div>
                 <div className="actions">
-                  <button className="primary" onClick={() => addToPool(offer)}>{t("catalog.addPool")}</button>
-                  {offer.register && <a className="button-link" href={offer.register} target="_blank" rel="noreferrer">{t("common.register")} ↗</a>}
+                  <button className="primary" onClick={() => addToPool(offer)}>{t("catalog.configureAndAdd")}</button>
+                  {offer.register && <a className="button-link" href={offer.register} target="_blank" rel="noreferrer">{(language === "zh" ? offer.registerLabel : offer.registerLabelEn) || t("common.register")} ↗</a>}
                   {offer.docsUrl && <a href={offer.docsUrl} target="_blank" rel="noreferrer">{t("common.docs")} ↗</a>}
                 </div>
               </article>
