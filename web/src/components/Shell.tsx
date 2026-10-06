@@ -147,6 +147,7 @@ export function Shell({
         </header>
         <section className="page-title-strip">
           <div className="page-hero-copy"><h1>{title}</h1><p>{t(subtitleKeys[view])}</p></div>
+          {view === "overview" && <div className="page-hero-aside"><span>{t("overview.heroAsideLine1")}<br />{t("overview.heroAsideLine2")}</span><i /></div>}
           <div className="page-hero-mountains" aria-hidden="true"><i /><i /><i /></div>
         </section>
         {children}
