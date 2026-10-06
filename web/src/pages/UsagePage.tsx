@@ -159,9 +159,11 @@ export function UsagePage() {
 
 function UsageTable({ title, rows, kind }: { title: string; rows: UsageGroup[]; kind: "tenant" | "application" | "provider" | "model" | "day" }) {
   const { t } = useI18n();
+  const maxTokens = Math.max(1, ...rows.map((row) => row.total_tokens ?? 0));
   return (
     <section className="card">
       <div className="section-head"><div><h2>{title}</h2></div></div>
+      {kind === "day" && <div className="usage-trend-bars">{rows.slice(-14).map((row, index) => <div className="day-bar" key={`${row.day ?? index}`}><span className="bar" style={{ height: `${Math.max(4, Math.round(((row.total_tokens ?? 0) / maxTokens) * 100))}%` }} /><small>{row.day?.slice(5) ?? index + 1}</small></div>)}</div>}
       <div className="table-wrap"><table><thead><tr><th>{t("usage.dimension")}</th><th>{t("common.token")}</th><th>{t("usage.estimatedCost")}</th>{(kind === "tenant" || kind === "application") && <><th>{t("usage.tokenQuota")}</th><th>{t("usage.costQuota")}</th><th>{t("common.status")}</th></>}</tr></thead>
         <tbody>{rows.map((row, index) => {
           const label = row.tenant_name || row.application_name || row.provider_name || row.remote_model || row.day || t("common.unknown");

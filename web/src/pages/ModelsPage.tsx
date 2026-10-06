@@ -120,6 +120,7 @@ export function ModelsPage({
 }) {
   const { t, status, errorText } = useI18n();
   const [workspace, setWorkspace] = useState<ModelWorkspace>("models");
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [routeEditorOpen, setRouteEditorOpen] = useState(false);
   const routeEditorRef = useRef<HTMLFormElement>(null);
   const [providerFilter, setProviderFilter] = useState("all");
@@ -142,6 +143,7 @@ export function ModelsPage({
   const [multiConnections, setMultiConnections] = useState<MultiConnection[]>([]);
 
   const ordered = useMemo(() => [...routes].sort((a, b) => a.priority - b.priority), [routes]);
+  const selectedRoute = useMemo(() => ordered.find((route) => route.id === selectedRouteId) ?? ordered[0] ?? null, [ordered, selectedRouteId]);
   const filteredRoutes = useMemo(() => ordered.filter((route) => {
     if (providerFilter !== "all" && route.provider_id !== providerFilter) return false;
     if (healthFilter === "healthy" && (!route.enabled || route.health !== "healthy")) return false;
@@ -622,11 +624,13 @@ export function ModelsPage({
 
       <section role="tabpanel" id="workspace-panel-models" aria-labelledby="workspace-tab-models" hidden={workspace !== "models"}>
         <div className="stat-grid models-summary" aria-label={t("models.summary")}>
-          <article className="card stat"><b>{ordered.length}</b><span>{t("models.configuredCount")}</span></article>
-          <article className="card stat"><b>{ordered.filter((route) => route.enabled).length}</b><span>{t("models.enabledCount")}</span></article>
-          <article className="card stat"><b>{ordered.filter((route) => route.enabled && route.health === "healthy").length}</b><span>{t("models.healthyCount")}</span></article>
-          <article className="card stat"><b>{ordered.filter((route) => !route.enabled || route.health !== "healthy").length}</b><span>{t("models.attentionCount")}</span></article>
+          <article className="card stat"><span className="metric-icon blue">◇</span><div><b>{ordered.length}</b><span>{t("models.configuredCount")}</span></div></article>
+          <article className="card stat"><span className="metric-icon green">▶</span><div><b>{ordered.filter((route) => route.enabled).length}</b><span>{t("models.enabledCount")}</span></div></article>
+          <article className="card stat"><span className="metric-icon green">♡</span><div><b>{ordered.filter((route) => route.enabled && route.health === "healthy").length}</b><span>{t("models.healthyCount")}</span></div></article>
+          <article className="card stat"><span className="metric-icon amber">Ⅱ</span><div><b>{ordered.filter((route) => !route.enabled).length}</b><span>{t("models.disabledCount")}</span></div></article>
+          <article className="card stat"><span className="metric-icon amber">!</span><div><b>{ordered.filter((route) => route.enabled && route.health !== "healthy").length}</b><span>{t("models.attentionCount")}</span></div></article>
         </div>
+        <div className="model-pool-layout">
         <section className="card model-list-card">
         <div className="section-head">
           <div><p>{t("models.desc")}</p></div>
@@ -644,7 +648,7 @@ export function ModelsPage({
           </select></label>
         </div>
         <div className="table-wrap"><table data-testid="model-routes"><thead><tr><th>#</th><th>{t("common.model")}</th><th>{t("common.provider")}</th><th>{t("common.capability")}</th><th>{t("common.pricePerMillion")}</th><th>{t("common.runtimeStatus")}</th><th>{t("common.catalogStatus")}</th><th>{t("common.actions")}</th></tr></thead>
-          <tbody>{filteredRoutes.map((route) => <tr key={route.id}>
+          <tbody>{filteredRoutes.map((route) => <tr key={route.id} className={selectedRoute?.id === route.id ? "selected-route" : ""} onClick={() => setSelectedRouteId(route.id)}>
             {(() => { const index = ordered.findIndex((item) => item.id === route.id); return <>
             <td>{route.priority}</td>
             <td><b>{route.display_name || route.remote_model}</b><small>{route.remote_model}</small></td>
@@ -666,6 +670,58 @@ export function ModelsPage({
             </>; })()}
           </tr>)}{!filteredRoutes.length && <tr><td colSpan={8} className="empty">{ordered.length ? t("models.noFilterResults") : t("models.empty")}</td></tr>}</tbody>
         </table></div>
+        </section>
+
+        <aside className="card model-inspector">
+          {selectedRoute ? <>
+            <div className="inspector-head">
+              <div><h2>{t("models.detailTitle")}</h2></div>
+              <button onClick={() => edit(selectedRoute)}>{t("common.edit")}</button>
+            </div>
+            <div className="inspector-identity">
+              <span className="provider-avatar">{selectedRoute.provider_name.slice(0, 2).toUpperCase()}</span>
+              <div><h2>{selectedRoute.display_name || selectedRoute.remote_model}</h2><small>{selectedRoute.id}</small></div>
+              <span className={`badge ${selectedRoute.enabled && selectedRoute.health === "healthy" ? "ok" : selectedRoute.enabled ? "warn" : "muted-badge"}`}>{status(selectedRoute.enabled ? selectedRoute.health : "disabled")}</span>
+            </div>
+            <div className="cap-line">{selectedRoute.capabilities.map((cap) => <span className="tag" key={cap}>{cap}</span>)}</div>
+            <div className="kv-mini">
+              <div><span>{t("common.provider")}</span><b>{selectedRoute.provider_name}</b></div>
+              <div><span>{t("common.model")}</span><b>{selectedRoute.remote_model}</b></div>
+              <div><span>{t("models.priority")}</span><b>{selectedRoute.priority}</b></div>
+              <div><span>{t("common.pricePerMillion")}</span><b>{selectedRoute.pricing.input_per_million == null && selectedRoute.pricing.output_per_million == null ? "—" : `${selectedRoute.pricing.currency} ${selectedRoute.pricing.input_per_million ?? "?"} / ${selectedRoute.pricing.output_per_million ?? "?"}`}</b></div>
+              <div><span>{t("common.runtimeStatus")}</span><b>{status(selectedRoute.health)}</b></div>
+            </div>
+            <div className="connection-box">
+              <h3>{t("models.connectionStatus")}</h3>
+              <div className="kv-mini">
+                <div><span>{t("common.baseUrl")}</span><b>{providers.find((provider) => provider.id === selectedRoute.provider_id)?.base_url ?? "—"}</b></div>
+                <div><span>{t("common.latency")}</span><b>{selectedRoute.health_detail?.last_total_ms == null ? "—" : `${selectedRoute.health_detail.last_total_ms} ms`}</b></div>
+              </div>
+            </div>
+            <h3>{t("models.quickActions")}</h3>
+            <div className="quick-actions">
+              <button onClick={() => void mutate(selectedRoute, "probe")}>▷ {t("common.probe")}</button>
+              <button onClick={() => edit(selectedRoute)}>{t("common.edit")}</button>
+              <button className="danger" onClick={() => void mutate(selectedRoute, "toggle")}>{selectedRoute.enabled ? t("common.disable") : t("common.enable")}</button>
+              <button className="danger" onClick={() => void mutate(selectedRoute, "delete")}>{t("common.delete")}</button>
+            </div>
+          </> : <p className="empty">{t("models.empty")}</p>}
+        </aside>
+        </div>
+
+        <section className="provider-strip card">
+          <div className="section-head"><div><h2>{t("models.providersTitle")}</h2><p>{t("models.providerAddDesc")}</p></div></div>
+          <div className="provider-strip-grid">
+            {providers.slice(0, 5).map((provider) => {
+              const providerRoutes = routesByProvider.get(provider.id) ?? [];
+              const healthyCount = providerRoutes.filter((route) => route.enabled && route.health === "healthy").length;
+              return <article className="provider-summary-card" key={provider.id}>
+                <header><span className="provider-dot">{provider.name.slice(0, 1).toUpperCase()}</span><b>{provider.name}</b></header>
+                <small>{providerRoutes.length} · {healthyCount}/{providerRoutes.length || 0} {status("healthy")}</small>
+                <small>{provider.base_url}</small>
+              </article>;
+            })}
+          </div>
         </section>
       </section>
 

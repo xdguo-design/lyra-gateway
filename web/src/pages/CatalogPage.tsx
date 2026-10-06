@@ -22,6 +22,7 @@ export function CatalogPage() {
   const [pool, setPool] = useState<CatalogPoolFilter>("all");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -44,6 +45,7 @@ export function CatalogPage() {
     () => filterCatalogOffers(offers, { search, origin, provider, capability, pool }),
     [offers, search, origin, provider, capability, pool],
   );
+  const selectedOffer = useMemo(() => filtered.find((offer, index) => String(offer.id ?? index) === selectedId) ?? null, [filtered, selectedId]);
 
   async function action(kind: "export" | "sync") {
     try {
@@ -119,6 +121,7 @@ export function CatalogPage() {
           </div>
         </div>
 
+        <div className="catalog-layout">
         <div className="catalog-grid" aria-busy={loading}>
           {filtered.map((offer, index) => {
             const region = catalogModelRegion(offer);
@@ -134,7 +137,7 @@ export function CatalogPage() {
                   ? t("catalog.originInternational")
                   : t("catalog.originUnknown");
             return (
-              <article className="catalog-card" key={String(offer.id ?? index)}>
+              <article className={`catalog-card ${selectedId === String(offer.id ?? index) ? "selected" : ""}`} key={String(offer.id ?? index)} onClick={() => setSelectedId(String(offer.id ?? index))}>
                 <div className="section-head">
                   <div><h3>{String(offer.name ?? offer.model ?? offer.id ?? "Model")}</h3><p>{String(offer.provider ?? "")}</p></div>
                   <div className="catalog-card-badges">
@@ -172,6 +175,22 @@ export function CatalogPage() {
               </article>
             );
           })}
+        </div>
+        <aside className="card catalog-draft">
+          <div className="section-head"><div><h2>{t("catalog.draftTitle")}</h2><p>{t("catalog.desc")}</p></div></div>
+          {selectedOffer ? <div className="catalog-draft-preview">
+            <div className="draft-model"><b>{String(selectedOffer.name ?? selectedOffer.model ?? selectedOffer.id ?? "Model")}</b><small>{String(selectedOffer.provider ?? "")}</small></div>
+            <p>{String(selectedOffer.freeSummary ?? "")}</p>
+            <div>{selectedOffer.capabilities?.map((cap) => <span className="tag" key={cap}>{cap}</span>)}</div>
+            <div className="catalog-meta">
+              <span>{t("common.model")} <code>{String(selectedOffer.model ?? "—")}</code></span>
+              <span>{t("common.endpoint")} <code>{String(selectedOffer.apiEndpoint ?? t("catalog.manualEndpoint"))}</code></span>
+            </div>
+            <button className="primary" onClick={() => addToPool(selectedOffer)}>{t("catalog.configureAndAdd")}</button>
+          </div> : <div className="catalog-draft-empty">
+            <div><div className="empty-graphic">▤</div><h3>{t("catalog.draftEmptyTitle")}</h3><p>{t("catalog.draftEmptyDesc")}</p></div>
+          </div>}
+        </aside>
         </div>
         {!loading && !offers.length && !message && <p className="empty" data-testid="catalog-empty">{t("catalog.noEntries")}</p>}
         {!loading && offers.length > 0 && !filtered.length && <p className="empty" data-testid="catalog-no-matches">{t("catalog.empty")}</p>}

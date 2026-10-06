@@ -80,7 +80,7 @@ export default function App() {
   return (
     <Shell view={view} onView={changeView} online={online} onRefresh={() => void refresh()} token={token} onToken={changeToken}>
       {error && <div className="notice bad">{error}<small>{t("app.remoteHint")}</small></div>}
-      {page}
+      <div className={`page-view view-${view}`}>{page}</div>
     </Shell>
   );
 }

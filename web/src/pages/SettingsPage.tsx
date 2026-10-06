@@ -95,6 +95,7 @@ export function SettingsPage({
       </div>
     </section>
 
+    <section className="settings-runtime-grid">
     <section className="card" data-testid="settings-runtime-access">
       <div className="section-head"><div><h2>{t("settings.runtimeTitle")}</h2><p>{t("settings.runtimeDesc")}</p></div></div>
       <div className="kv-list copyable">
@@ -106,6 +107,16 @@ export function SettingsPage({
         <CopyRow label="Health" value={overview?.health_url} />
         <CopyRow label="Docs" value={overview?.docs_url} />
       </div>
+    </section>
+    <section className="card service-status-card">
+      <div className="section-head"><div><h2>{t("settings.serviceStatus")}</h2><p>{t("settings.runtimeDesc")}</p></div><span className="badge ok">{t("common.normal")}</span></div>
+      <div className="status-list">
+        <div><i>↗</i><div><span>{t("settings.currentService")}</span><b>{overview?.api_base || "http://localhost:8000"}</b></div></div>
+        <div><i>⬡</i><div><span>{t("settings.version")}</span><b>v1.0.0</b></div></div>
+        <div><i>♢</i><div><span>{t("settings.adminStatus")}</span><b>admin · {t("common.normal")}</b></div></div>
+        <div><i>♡</i><div><span>{t("settings.configHealth")}</span><b>{t("common.normal")}</b></div></div>
+      </div>
+    </section>
     </section>
 
     <section className="card" data-testid="settings-diagnostics">
