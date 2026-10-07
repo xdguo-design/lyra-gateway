@@ -232,17 +232,17 @@ test("overview puts health and recent activity before client setup", async ({ pa
   expect((await recent.boundingBox())!.y).toBeLessThan((await access.boundingBox())!.y);
 });
 
-test("usage places filters and breakdowns before quota editing", async ({ page }) => {
+test("usage follows the approved filter, summary, quota, breakdown order", async ({ page }) => {
   await page.goto("/admin/#/usage");
   await page.getByRole("button", { name: "EN", exact: true }).click();
   const filters = page.getByRole("combobox", { name: "Tenant", exact: true });
   const summary = page.getByText("Total Tokens", { exact: true });
-  const breakdown = page.getByRole("heading", { name: "By Tenant", exact: true });
   const quota = page.getByRole("heading", { name: "Monthly Quotas", exact: true });
+  const breakdown = page.getByRole("heading", { name: "By Tenant", exact: true });
   const y = async (locator: typeof filters) => (await locator.boundingBox())!.y;
   expect(await y(filters)).toBeLessThan(await y(summary));
-  expect(await y(summary)).toBeLessThan(await y(breakdown));
-  expect(await y(breakdown)).toBeLessThan(await y(quota));
+  expect(await y(summary)).toBeLessThan(await y(quota));
+  expect(await y(quota)).toBeLessThan(await y(breakdown));
 });
 
 test("routing shows each candidate model health and enabled state", async ({ page }) => {
