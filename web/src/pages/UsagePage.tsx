@@ -48,7 +48,7 @@ function UsageBreakdownTable({ title, rows, kind }: { title: string; rows: Usage
   return <section className="card usage-breakdown-card">
     <div className="section-head"><div><h2><span className="usage-section-icon" aria-hidden="true">{kind === "tenant" ? "⌘" : kind === "application" ? "◇" : kind === "provider" ? "≋" : "⬡"}</span>{title}</h2></div></div>
     <div className="table-wrap"><table><thead><tr>
-      <th>{title.replace(/^按|^By\s/i, "")}</th><th>Tokens</th><th>{t("usage.costUsd")}</th>
+      <th>{dimensionTitle}</th><th>Tokens</th><th>{t("usage.costUsd")}</th>
       {quotaAware && <><th>{t("usage.tokenQuota")}</th><th>{t("usage.costQuota")}</th><th>{t("common.status")}</th></>}
     </tr></thead><tbody>
       {rows.map((row, index) => {
