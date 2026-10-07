@@ -44,6 +44,7 @@ function costNumber(row: UsageGroup): number {
 function UsageBreakdownTable({ title, rows, kind }: { title: string; rows: UsageGroup[]; kind: "tenant" | "application" | "provider" | "model" }) {
   const { t } = useI18n();
   const quotaAware = kind === "tenant" || kind === "application";
+  const dimensionTitle = kind === "tenant" ? t("common.tenant") : kind === "application" ? t("common.application") : kind === "provider" ? t("common.provider") : t("common.model");
   return <section className="card usage-breakdown-card">
     <div className="section-head"><div><h2><span className="usage-section-icon" aria-hidden="true">{kind === "tenant" ? "⌘" : kind === "application" ? "◇" : kind === "provider" ? "≋" : "⬡"}</span>{title}</h2></div></div>
     <div className="table-wrap"><table><thead><tr>
