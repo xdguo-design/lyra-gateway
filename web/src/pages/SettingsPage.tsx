@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { api } from "../api/client";
 import { useI18n } from "../i18n";
 import type { Application, Overview, Tenant } from "../types";
@@ -19,10 +19,26 @@ async function copyText(value: string): Promise<void> {
   input.remove();
 }
 
-function CopyRow({ label, value }: { label: string; value: string | null | undefined }) {
+function CopyRow({ label, value, copyValue }: { label: string; value: string | null | undefined; copyValue?: string | null }) {
   const { t } = useI18n();
   const text = value || "—";
-  return <div><span>{label}</span><code>{text}</code>{value && <button type="button" onClick={() => void copyText(value)}>{t("common.copy")}</button>}</div>;
+  const toCopy = copyValue ?? value ?? "";
+  return <div className="runtime-row"><span>{label}</span><code>{text}</code>{toCopy && <button type="button" aria-label={t("common.copy")} onClick={() => void copyText(toCopy)}>⧉</button>}</div>;
+}
+
+function formatDate(value: string | null) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+}
+
+function serviceOrigin(value: string | null | undefined) {
+  if (!value) return "http://localhost:8000";
+  try {
+    return new URL(value, window.location.origin).origin;
+  } catch {
+    return value;
+  }
 }
 
 export function SettingsPage({
@@ -42,6 +58,12 @@ export function SettingsPage({
   const [issuedKey, setIssuedKey] = useState("");
   const [copiedKey, setCopiedKey] = useState(false);
   const [message, setMessage] = useState("");
+
+  const applicationCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const app of applications) counts.set(app.tenant_id, (counts.get(app.tenant_id) ?? 0) + 1);
+    return counts;
+  }, [applications]);
 
   async function createTenant(event: FormEvent) {
     event.preventDefault();
@@ -74,59 +96,82 @@ export function SettingsPage({
     setCopiedKey(true);
   }
 
-  return <div className="stack">
+  const runtimeRows = [
+    { label: t("settings.apiToken"), value: t("settings.bearerTokenCompatible"), copyValue: overview?.api_token },
+    { label: t("settings.defaultModel"), value: "auto" },
+    { label: t("settings.chatEndpoint"), value: overview?.chat_url },
+    { label: t("settings.imagesEndpoint"), value: overview?.images_url },
+    { label: t("settings.modelsEndpoint"), value: overview?.models_url },
+    { label: t("settings.healthEndpoint"), value: overview?.health_url },
+    { label: t("settings.databasePath"), value: overview?.database_path },
+    { label: t("settings.connectionLog"), value: overview?.connection_log_path },
+    { label: t("settings.catalogOutput"), value: overview?.catalog_output_path },
+    { label: t("settings.gatewayLog"), value: overview?.logs_path },
+    { label: t("settings.docs"), value: overview?.docs_url },
+  ];
+
+  return <div className="stack settings-stack">
     {message && <div className="notice bad">{message}</div>}
-    {issuedKey && <div className="notice warn"><b>{t("settings.keyOnce")}</b><code>{issuedKey}</code><div className="actions"><button type="button" onClick={() => void copyIssuedKey()}>{copiedKey ? t("common.copied") : t("settings.copyKey")}</button></div></div>}
-    <section className="stack" data-testid="settings-client-setup">
-      <div className="section-head"><div><h2>{t("settings.clientSetupTitle")}</h2><p>{t("settings.clientSetupDesc")}</p></div></div>
-      <div className="grid-two">
-      <form className="card form-card" onSubmit={createTenant}>
-        <div className="section-head"><div><h2>{t("common.tenant")}</h2><p>{t("settings.tenantDesc")}</p></div></div>
-        <div className="form-grid one"><label>Tenant ID<input required value={tenantDraft.id} onChange={(event) => setTenantDraft({ ...tenantDraft, id: event.target.value })} /></label><label>{t("common.name")}<input required value={tenantDraft.name} onChange={(event) => setTenantDraft({ ...tenantDraft, name: event.target.value })} /></label></div>
-        <div className="form-actions"><button className="primary" type="submit">{t("settings.createTenant")}</button></div>
-        <div className="compact-list">{tenants.map((item) => <div key={item.id}><b>{item.name}</b><code>{item.id}</code></div>)}</div>
+
+    <section className="settings-client-grid" data-testid="settings-client-setup">
+      <form className="card settings-entity-card tenant-card" onSubmit={createTenant}>
+        <div className="settings-card-title"><span className="settings-title-icon">♙</span><div><h2>{t("settings.tenantManagement")}</h2><p>{t("settings.tenantManagementDesc")}</p></div></div>
+        <div className="settings-inline-form tenant-form">
+          <label>{t("settings.tenantId")}<input required placeholder={t("settings.tenantIdPlaceholder")} value={tenantDraft.id} onChange={(event) => setTenantDraft({ ...tenantDraft, id: event.target.value })} /></label>
+          <label>{t("common.name")}<input required placeholder={t("settings.tenantNamePlaceholder")} value={tenantDraft.name} onChange={(event) => setTenantDraft({ ...tenantDraft, name: event.target.value })} /></label>
+          <button className="primary" type="submit">{t("settings.createTenant")}</button>
+        </div>
+        <p className="settings-field-hint">{t("settings.idHint")}</p>
+        <div className="table-wrap settings-table"><table><thead><tr><th>{t("settings.tenantId")}</th><th>{t("common.name")}</th><th>{t("settings.applicationCount")}</th><th>{t("settings.createdAt")}</th><th>{t("common.actions")}</th></tr></thead><tbody>
+          {tenants.map((item) => <tr key={item.id}><td><b>{item.id}</b></td><td>{item.name}</td><td>{applicationCounts.get(item.id) ?? 0}</td><td>{formatDate(item.created_at)}</td><td><button type="button" className="settings-row-menu">···</button></td></tr>)}
+          {!tenants.length && <tr><td colSpan={5} className="empty">{t("settings.noTenants")}</td></tr>}
+        </tbody></table></div>
       </form>
-      <form className="card form-card" onSubmit={createApplication}>
-        <div className="section-head"><div><h2>{t("common.application")}</h2><p>{t("settings.appDesc")}</p></div></div>
-        <div className="form-grid one"><label>Application ID<input required value={appDraft.id} onChange={(event) => setAppDraft({ ...appDraft, id: event.target.value })} /></label><label>{t("common.tenant")}<select required value={appDraft.tenant_id} onChange={(event) => setAppDraft({ ...appDraft, tenant_id: event.target.value })}><option value="">{t("common.select")}</option>{tenants.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label><label>{t("common.name")}<input required value={appDraft.name} onChange={(event) => setAppDraft({ ...appDraft, name: event.target.value })} /></label></div>
-        <div className="form-actions"><button className="primary" type="submit">{t("settings.createApp")}</button></div>
-        <div className="compact-list">{applications.map((item) => <div key={item.id}><b>{item.name}</b><code>{item.key_prefix}…</code></div>)}</div>
+
+      <form className="card settings-entity-card app-card" onSubmit={createApplication}>
+        <div className="settings-card-title"><span className="settings-title-icon layers">◇</span><div><h2>{t("settings.applicationManagement")}</h2><p>{t("settings.applicationManagementDesc")}</p></div></div>
+        <div className="settings-inline-form app-form">
+          <label>{t("settings.applicationId")}<input required placeholder={t("settings.applicationIdPlaceholder")} value={appDraft.id} onChange={(event) => setAppDraft({ ...appDraft, id: event.target.value })} /></label>
+          <label>{t("settings.belongsTenant")}<select required value={appDraft.tenant_id} onChange={(event) => setAppDraft({ ...appDraft, tenant_id: event.target.value })}><option value="">{t("common.select")}</option>{tenants.map((item) => <option value={item.id} key={item.id}>{item.name}</option>)}</select></label>
+          <label>{t("common.name")}<input required placeholder={t("settings.applicationNamePlaceholder")} value={appDraft.name} onChange={(event) => setAppDraft({ ...appDraft, name: event.target.value })} /></label>
+          <button className="primary" type="submit">{t("settings.createApp")}</button>
+        </div>
+        <p className="settings-field-hint">{t("settings.idHint")}</p>
+        <div className="table-wrap settings-table"><table><thead><tr><th>{t("settings.applicationId")}</th><th>{t("common.name")}</th><th>{t("settings.belongsTenant")}</th><th>{t("settings.apiKeyPrefix")}</th><th>{t("settings.createdAt")}</th><th>{t("common.actions")}</th></tr></thead><tbody>
+          {applications.map((item) => <tr key={item.id}><td><b>{item.id}</b></td><td>{item.name}</td><td>{item.tenant_id}</td><td><span className="key-prefix"><code>{item.key_prefix}…</code><button type="button" aria-label={t("common.copy")} onClick={() => void copyText(item.key_prefix)}>⧉</button></span></td><td>{formatDate(item.created_at)}</td><td><button type="button" className="settings-row-menu">···</button></td></tr>)}
+          {!applications.length && <tr><td colSpan={6} className="empty">{t("settings.noApplications")}</td></tr>}
+        </tbody></table></div>
       </form>
-      </div>
     </section>
+
+    {issuedKey && <section className="settings-key-banner">
+      <span className="key-banner-icon">▣</span>
+      <div><h3>{t("settings.keyOnceTitle")}</h3><p>{t("settings.keyOnceDesc")}</p></div>
+      <code>{issuedKey}</code>
+      <button type="button" aria-label={t("settings.copyKey")} onClick={() => void copyIssuedKey()}>{copiedKey ? "✓" : "⧉"}</button>
+      <button type="button" className="key-banner-close" aria-label={t("common.close")} onClick={() => setIssuedKey("")}>×</button>
+    </section>}
 
     <section className="settings-runtime-grid">
-    <section className="card" data-testid="settings-runtime-access">
-      <div className="section-head"><div><h2>{t("settings.runtimeTitle")}</h2><p>{t("settings.runtimeDesc")}</p></div></div>
-      <div className="kv-list copyable">
-        <CopyRow label="API Token" value={overview?.api_token} />
-        <CopyRow label={t("settings.defaultModel")} value="auto" />
-        <CopyRow label="Chat" value={overview?.chat_url} />
-        <CopyRow label="Images" value={overview?.images_url} />
-        <CopyRow label="Models" value={overview?.models_url} />
-        <CopyRow label="Health" value={overview?.health_url} />
-        <CopyRow label="Docs" value={overview?.docs_url} />
-      </div>
-    </section>
-    <section className="card service-status-card">
-      <div className="section-head"><div><h2>{t("settings.serviceStatus")}</h2><p>{t("settings.runtimeDesc")}</p></div><span className="badge ok">{t("common.normal")}</span></div>
-      <div className="status-list">
-        <div><i>↗</i><div><span>{t("settings.currentService")}</span><b>{overview?.api_base || "http://localhost:8000"}</b></div></div>
-        <div><i>⬡</i><div><span>{t("settings.version")}</span><b>v1.0.0</b></div></div>
-        <div><i>♢</i><div><span>{t("settings.adminStatus")}</span><b>admin · {t("common.normal")}</b></div></div>
-        <div><i>♡</i><div><span>{t("settings.configHealth")}</span><b>{t("common.normal")}</b></div></div>
-      </div>
-    </section>
-    </section>
+      <section className="card settings-runtime-card" data-testid="settings-runtime-access">
+        <div className="settings-card-title runtime-title"><span className="settings-title-icon">▧</span><div><h2>{t("settings.runtimeTitle")}</h2><p>{t("settings.runtimeInfoDesc")}</p></div></div>
+        <div className="runtime-list">
+          {runtimeRows.slice(0, 6).map((row) => <CopyRow key={row.label} label={row.label} value={row.value} copyValue={row.copyValue} />)}
+          <div data-testid="settings-diagnostics">
+            {runtimeRows.slice(6).map((row) => <CopyRow key={row.label} label={row.label} value={row.value} copyValue={row.copyValue} />)}
+          </div>
+        </div>
+      </section>
 
-    <section className="card" data-testid="settings-diagnostics">
-      <div className="section-head"><div><h2>{t("settings.diagnosticsTitle")}</h2><p>{t("settings.diagnosticsDesc")}</p></div></div>
-      <div className="kv-list copyable">
-        <CopyRow label="Database" value={overview?.database_path} />
-        <CopyRow label={t("settings.connectionLog")} value={overview?.connection_log_path} />
-        <CopyRow label={t("settings.catalogOutput")} value={overview?.catalog_output_path} />
-        <CopyRow label={t("settings.gatewayLog")} value={overview?.logs_path} />
-      </div>
+      <section className="card service-status-card">
+        <div className="settings-card-title"><span className="settings-title-icon pulse">∿</span><div><h2>{t("settings.serviceStatus")}</h2></div></div>
+        <div className="status-list">
+          <div><i>↗</i><div><span>{t("settings.currentService")}</span><b className="status-copy">{serviceOrigin(overview?.api_base)}<button aria-label={t("common.copy")} onClick={() => void copyText(serviceOrigin(overview?.api_base))}>⧉</button></b></div></div>
+          <div><i>◇</i><div><span>{t("settings.version")}</span><b className="status-copy">v1.0.0<button aria-label={t("common.copy")} onClick={() => void copyText("v1.0.0")}>⧉</button></b></div></div>
+          <div><i className="shield">♢</i><div><span>{t("settings.adminStatus")}</span><b><span className="status-ok-dot" />{t("settings.loggedIn")}<small>{t("settings.currentUser")}: admin</small></b></div></div>
+          <div><i className="heart">♡</i><div><span>{t("settings.configHealth")}</span><b><span className="status-ok-dot" />{overview ? t("common.healthy") : t("common.warning")}<small>{t("settings.configHealthDesc")}</small></b></div></div>
+        </div>
+      </section>
     </section>
   </div>;
 }

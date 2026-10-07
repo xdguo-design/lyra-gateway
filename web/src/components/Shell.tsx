@@ -150,6 +150,7 @@ export function Shell({
           <div className="page-hero-copy"><h1>{title}</h1><p>{t(subtitleKeys[view])}</p></div>
           {view === "overview" && <div className="page-hero-aside"><span>{t("overview.heroAsideLine1")}<br />{t("overview.heroAsideLine2")}</span><i /></div>}
           {view === "routing" && <div className="page-hero-aside"><span>{t("routing.heroAsideLine1")}<br />{t("routing.heroAsideLine2")}</span><i /></div>}
+          {view === "settings" && <div className="page-hero-aside"><span>{t("settings.heroAsideLine1")}<br />{t("settings.heroAsideLine2")}</span><i /></div>}
           <div className="page-hero-mountains" aria-hidden="true"><i /><i /><i /></div>
         </section>
         {children}

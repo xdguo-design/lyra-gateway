@@ -591,27 +591,68 @@ main:has(.view-catalog) .page-title-strip h1{font-size:34px!important}
 }
 
 /* Settings */
-.view-settings [data-testid="settings-client-setup"]>.section-head{display:none}
-.view-settings [data-testid="settings-client-setup"]>.grid-two{grid-template-columns:1fr 1.15fr!important;gap:12px!important}
-.view-settings .form-card{padding:15px!important}
-.view-settings .form-card .form-grid.one{grid-template-columns:1fr 1fr auto!important;align-items:end!important}
-.view-settings .form-card:nth-child(2) .form-grid.one{grid-template-columns:1fr 1fr 1fr auto!important}
-.view-settings .form-card .form-actions{align-self:end}
-.view-settings .compact-list{margin-top:12px;border:1px solid #e3eaf3;border-radius:8px;overflow:hidden}
-.view-settings .compact-list>div{margin:0!important;padding:8px 10px!important;border-top:1px solid #e8eef5!important}
-.view-settings .compact-list>div:first-child{border-top:0!important}
-.view-settings .notice.warn{background:#eef6ff!important;border-color:#b9d5fb!important;color:#234c82!important;display:grid!important;grid-template-columns:auto 1fr auto;align-items:center;gap:12px}
-.settings-runtime-grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(300px,.55fr);gap:12px}
-.settings-runtime-grid>[data-testid="settings-runtime-access"]{margin:0}
-.service-status-card{padding:15px!important}
+main:has(.view-settings) .page-title-strip{height:112px!important;margin-bottom:12px!important;padding:20px 26px!important}
+main:has(.view-settings) .page-title-strip h1{font-size:33px!important}
+main:has(.view-settings) .page-title-strip p{margin-top:8px!important}
+main:has(.view-settings) .page-hero-aside{top:24px!important}
+.settings-stack{gap:12px!important}
+.settings-client-grid{display:grid!important;grid-template-columns:1fr 1.15fr!important;gap:12px!important}
+.settings-entity-card{padding:14px 16px!important;min-width:0!important}
+.settings-card-title{display:flex;align-items:flex-start;gap:10px;margin-bottom:10px}
+.settings-title-icon{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;background:#eaf3ff;color:#176af2;font-size:20px}
+.settings-title-icon.layers{font-size:22px}.settings-title-icon.pulse{font-size:24px}
+.settings-card-title h2{margin:2px 0 3px!important;font-size:16px!important;color:#10213d!important}
+.settings-card-title p{margin:0!important;font-size:9.5px!important;color:#71849f!important;line-height:1.45!important}
+.settings-inline-form{display:grid;align-items:end;gap:10px}
+.tenant-form{grid-template-columns:1fr 1fr auto}.app-form{grid-template-columns:1fr .8fr 1fr auto}
+.settings-inline-form label{display:grid;gap:5px;font-size:9.5px;color:#233e60;font-weight:600}
+.settings-inline-form input,.settings-inline-form select{height:35px!important;font-size:9.5px!important;font-weight:400}
+.settings-inline-form button{height:35px!important;padding:0 18px!important;white-space:nowrap;font-size:10px!important}
+.settings-field-hint{margin:5px 0 10px!important;font-size:8px!important;color:#8494a9!important}
+.settings-table{border-radius:7px!important}
+.settings-table th,.settings-table td{padding:7px 9px!important;font-size:9px!important}
+.settings-table td b{font-size:9.5px!important}
+.settings-row-menu{border:0!important;background:transparent!important;padding:2px 5px!important;color:#31557e!important;font-weight:700!important}
+.key-prefix{display:flex;align-items:center;gap:4px}.key-prefix code{padding:3px 5px;border-radius:4px;background:#f0f4f8;color:#536f91;font-size:8.5px}.key-prefix button{border:0!important;background:transparent!important;padding:2px!important;font-size:10px!important}
+
+.settings-key-banner{min-height:74px;display:grid;grid-template-columns:50px minmax(0,1fr) minmax(300px,.7fr) 30px 24px;align-items:center;gap:12px;padding:10px 16px;border:1px solid #afd0fb;border-radius:8px;background:linear-gradient(90deg,#edf6ff,#f7fbff);color:#1f466f}
+.key-banner-icon{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;background:#176af2;color:#fff;font-size:18px}
+.settings-key-banner h3{margin:0 0 4px!important;font-size:14px!important;color:#163557!important}.settings-key-banner p{margin:0!important;font-size:8.8px!important;line-height:1.45!important;color:#6780a0!important}
+.settings-key-banner code{height:34px;display:flex;align-items:center;padding:0 10px;border-radius:6px;background:#fff;color:#385a82;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:9px}
+.settings-key-banner>button{border:0!important;background:transparent!important;padding:3px!important;color:#315b87!important;font-size:15px!important}
+.key-banner-close{font-size:18px!important;color:#6481a4!important}
+
+.settings-runtime-grid{display:grid!important;grid-template-columns:minmax(0,1.55fr) 430px!important;gap:12px!important;align-items:stretch!important}
+.settings-runtime-card,.service-status-card{padding:14px 16px!important}
+.runtime-title{margin-bottom:6px!important}
+.runtime-list{display:grid;gap:0}
+.runtime-list>[data-testid="settings-diagnostics"]{display:contents}
+.runtime-row{min-height:30px;display:grid!important;grid-template-columns:150px minmax(0,1fr) 24px!important;align-items:center!important;gap:8px!important;padding:2px 0!important;border:0!important}
+.runtime-row>span{font-size:9px;color:#213b5c!important;font-weight:600}
+.runtime-row code{height:24px;display:flex;align-items:center;padding:0 8px!important;border-radius:4px!important;background:#eef2f6!important;color:#536d8f!important;font-size:8.8px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.runtime-row button{border:0!important;background:transparent!important;padding:2px!important;color:#31577f!important;font-size:12px!important}
+
+.service-status-card .settings-card-title{margin-bottom:6px}
 .service-status-card .status-list{display:grid;gap:0;border-top:1px solid #edf1f6}
-.service-status-card .status-list div{display:grid;grid-template-columns:42px 1fr;gap:10px;padding:12px 0;border-bottom:1px solid #edf1f6}
-.service-status-card .status-list i{width:34px;height:34px;border-radius:9px;background:#edf5ff;color:#176af2;display:grid;place-items:center;font-style:normal}
-.service-status-card .status-list span{font-size:10px;color:#7b8ca2}
-.service-status-card .status-list b{display:block;margin-top:4px;font-size:11px;color:#1f3857}
-.view-settings [data-testid="settings-diagnostics"]{margin-top:0!important}
-.kv-list.copyable>div{grid-template-columns:145px minmax(0,1fr) auto!important;padding:7px 0!important}
-.kv-list.copyable code{background:#f3f6fa!important;color:#536d90!important;border-radius:5px!important;padding:4px 8px!important}
+.service-status-card .status-list>div{display:grid!important;grid-template-columns:42px minmax(0,1fr)!important;gap:10px!important;padding:11px 0!important;border-bottom:1px solid #edf1f6!important}
+.service-status-card .status-list>div>i{width:34px;height:34px;border-radius:9px;background:#edf5ff;color:#176af2;display:grid;place-items:center;font-style:normal;font-size:17px}
+.service-status-card .status-list>div>i.shield{color:#13a96d;background:#e9f8f2}.service-status-card .status-list>div>i.heart{color:#f04e73;background:#fff0f4}
+.service-status-card .status-list span{font-size:8.8px;color:#667d9c}
+.service-status-card .status-list b{display:block;margin-top:4px;font-size:9.5px;color:#1f395b;min-width:0}
+.service-status-card .status-list b small{display:block;margin-top:4px;font-size:8px;color:#7789a2;font-weight:400}
+.status-copy{display:grid!important;grid-template-columns:minmax(0,1fr) 20px;align-items:center;gap:5px}
+.status-copy button{border:0!important;background:transparent!important;padding:2px!important;font-size:11px!important;color:#42678e!important}
+.status-ok-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#13ad70;margin-right:7px}
+
+@media(max-width:1150px){
+  .settings-client-grid,.settings-runtime-grid{grid-template-columns:1fr!important}
+}
+@media(max-width:760px){
+  .tenant-form,.app-form{grid-template-columns:1fr!important}
+  .settings-key-banner{grid-template-columns:42px minmax(0,1fr) 24px}
+  .settings-key-banner code{grid-column:1/-1}.settings-key-banner>button:not(.key-banner-close){grid-column:3}.key-banner-close{grid-column:3;grid-row:1}
+  .runtime-row{grid-template-columns:110px minmax(0,1fr) 22px!important}
+}
 
 /* Usage */
 main:has(.view-usage) .page-title-strip{height:90px!important;margin-bottom:10px!important;padding:17px 26px!important}
