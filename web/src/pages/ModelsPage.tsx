@@ -107,6 +107,40 @@ function ProviderFields({
   );
 }
 
+function ProviderGlyph({ name }: { name: string }) {
+  const value = name.trim().toLowerCase();
+  const text = value.includes("anthropic") ? "AI"
+    : value.includes("google") || value.includes("gemini") ? "G"
+      : value.includes("deepseek") ? "◆"
+        : value.includes("ollama") ? "◌"
+          : value.includes("openai") ? "◎"
+            : value.includes("comfy") ? "✿"
+              : name.trim().slice(0, 1).toUpperCase() || "P";
+  return <span className={`provider-glyph provider-${value.replace(/[^a-z0-9]+/g, "-")}`}>{text}</span>;
+}
+
+function SummaryIcon({ kind }: { kind: "all" | "enabled" | "healthy" | "disabled" | "attention" }) {
+  if (kind === "all") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 7 4-7 4-7-4z" /><path d="m5 11 7 4 7-4M5 15l7 4 7-4" /></svg>;
+  if (kind === "enabled") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 9 6-9 6z" /></svg>;
+  if (kind === "healthy") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.7A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z" /></svg>;
+  if (kind === "disabled") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7v10M15 7v10" /></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4 3.5 19h17zM12 9v4M12 16h.01" /></svg>;
+}
+
+function formatContextWindow(route: Route): string {
+  const value = (route as Route & { context_window?: number | null }).context_window;
+  if (!value) return "—";
+  if (value >= 1_000_000) return `${(value / 1_000_000).toLocaleString(undefined, { maximumFractionDigits: 1 })}M`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
+  return value.toLocaleString();
+}
+
+function routePrice(route: Route): string {
+  if (route.pricing.input_per_million == null && route.pricing.output_per_million == null) return "—";
+  const currency = route.pricing.currency === "USD" ? "$" : `${route.pricing.currency} `;
+  return `${currency}${route.pricing.input_per_million ?? "?"} / ${currency}${route.pricing.output_per_million ?? "?"}`;
+}
+
 export function ModelsPage({
   routes,
   providers,
@@ -126,6 +160,10 @@ export function ModelsPage({
   const [providerFilter, setProviderFilter] = useState("all");
   const [healthFilter, setHealthFilter] = useState("all");
   const [capabilityFilter, setCapabilityFilter] = useState("all");
+  const [modelSearch, setModelSearch] = useState("");
+  const [sortMode, setSortMode] = useState<"priority" | "name" | "latency">("priority");
+  const [modelPage, setModelPage] = useState(1);
+  const modelPageSize = 10;
   const [logProviderFilter, setLogProviderFilter] = useState("all");
   const [logModelFilter, setLogModelFilter] = useState("all");
   const [logResultFilter, setLogResultFilter] = useState("all");
@@ -144,13 +182,37 @@ export function ModelsPage({
 
   const ordered = useMemo(() => [...routes].sort((a, b) => a.priority - b.priority), [routes]);
   const selectedRoute = useMemo(() => ordered.find((route) => route.id === selectedRouteId) ?? ordered[0] ?? null, [ordered, selectedRouteId]);
-  const filteredRoutes = useMemo(() => ordered.filter((route) => {
-    if (providerFilter !== "all" && route.provider_id !== providerFilter) return false;
-    if (healthFilter === "healthy" && (!route.enabled || route.health !== "healthy")) return false;
-    if (healthFilter === "attention" && route.enabled && route.health === "healthy") return false;
-    if (capabilityFilter !== "all" && !route.capabilities.includes(capabilityFilter)) return false;
-    return true;
-  }), [ordered, providerFilter, healthFilter, capabilityFilter]);
+  const selectedConnection = useMemo(() => {
+    if (!selectedRoute) return null;
+    return connections.find((entry) =>
+      entry.provider_id === selectedRoute.provider_id
+      && (entry.remote_model === selectedRoute.remote_model || entry.requested_model === selectedRoute.id || entry.requested_model === selectedRoute.remote_model),
+    ) ?? null;
+  }, [connections, selectedRoute]);
+  const filteredRoutes = useMemo(() => {
+    const query = modelSearch.trim().toLowerCase();
+    const next = ordered.filter((route) => {
+      if (providerFilter !== "all" && route.provider_id !== providerFilter) return false;
+      if (healthFilter === "healthy" && (!route.enabled || route.health !== "healthy")) return false;
+      if (healthFilter === "attention" && route.enabled && route.health === "healthy") return false;
+      if (capabilityFilter !== "all" && !route.capabilities.includes(capabilityFilter)) return false;
+      if (query && ![
+        route.id,
+        route.remote_model,
+        route.display_name ?? "",
+        route.provider_name,
+        route.capabilities.join(" "),
+      ].join(" ").toLowerCase().includes(query)) return false;
+      return true;
+    });
+    return [...next].sort((a, b) => {
+      if (sortMode === "name") return (a.display_name || a.remote_model).localeCompare(b.display_name || b.remote_model);
+      if (sortMode === "latency") return (a.health_detail?.last_total_ms ?? Number.MAX_SAFE_INTEGER) - (b.health_detail?.last_total_ms ?? Number.MAX_SAFE_INTEGER);
+      return a.priority - b.priority;
+    });
+  }, [ordered, providerFilter, healthFilter, capabilityFilter, modelSearch, sortMode]);
+  const modelPageCount = Math.max(1, Math.ceil(filteredRoutes.length / modelPageSize));
+  const visibleRoutes = filteredRoutes.slice((modelPage - 1) * modelPageSize, modelPage * modelPageSize);
   const capabilityOptions = useMemo(() => [...new Set(ordered.flatMap((route) => route.capabilities))].sort(), [ordered]);
   const routesByProvider = useMemo(() => {
     const grouped = new Map<string, Route[]>();
@@ -176,6 +238,14 @@ export function ModelsPage({
     if (!routeEditorOpen || workspace !== "models") return;
     routeEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [routeEditorOpen, workspace, editing]);
+
+  useEffect(() => {
+    setModelPage(1);
+  }, [providerFilter, healthFilter, capabilityFilter, modelSearch, sortMode]);
+
+  useEffect(() => {
+    if (modelPage > modelPageCount) setModelPage(modelPageCount);
+  }, [modelPage, modelPageCount]);
 
   useEffect(() => {
     const raw = sessionStorage.getItem(CATALOG_DRAFT_KEY);
@@ -624,100 +694,140 @@ export function ModelsPage({
 
       <section role="tabpanel" id="workspace-panel-models" aria-labelledby="workspace-tab-models" hidden={workspace !== "models"}>
         <div className="stat-grid models-summary" aria-label={t("models.summary")}>
-          <article className="card stat"><span className="metric-icon blue">◇</span><div><b>{ordered.length}</b><span>{t("models.configuredCount")}</span></div></article>
-          <article className="card stat"><span className="metric-icon green">▶</span><div><b>{ordered.filter((route) => route.enabled).length}</b><span>{t("models.enabledCount")}</span></div></article>
-          <article className="card stat"><span className="metric-icon green">♡</span><div><b>{ordered.filter((route) => route.enabled && route.health === "healthy").length}</b><span>{t("models.healthyCount")}</span></div></article>
-          <article className="card stat"><span className="metric-icon amber">Ⅱ</span><div><b>{ordered.filter((route) => !route.enabled).length}</b><span>{t("models.disabledCount")}</span></div></article>
-          <article className="card stat"><span className="metric-icon amber">!</span><div><b>{ordered.filter((route) => route.enabled && route.health !== "healthy").length}</b><span>{t("models.attentionCount")}</span></div></article>
+          <article className="card stat model-summary-card"><span className="metric-icon blue"><SummaryIcon kind="all" /></span><div><span>{t("models.configuredCount")}</span><b>{ordered.length}</b></div></article>
+          <article className="card stat model-summary-card"><span className="metric-icon green"><SummaryIcon kind="enabled" /></span><div><span>{t("models.enabledCount")}</span><b>{ordered.filter((route) => route.enabled).length}</b></div></article>
+          <article className="card stat model-summary-card"><span className="metric-icon green"><SummaryIcon kind="healthy" /></span><div><span>{t("models.healthyCount")}</span><b>{ordered.filter((route) => route.enabled && route.health === "healthy").length}</b></div></article>
+          <article className="card stat model-summary-card"><span className="metric-icon red"><SummaryIcon kind="disabled" /></span><div><span>{t("models.disabledCount")}</span><b>{ordered.filter((route) => !route.enabled).length}</b></div></article>
+          <article className="card stat model-summary-card"><span className="metric-icon amber"><SummaryIcon kind="attention" /></span><div><span>{t("models.attentionCount")}</span><b>{ordered.filter((route) => route.enabled && route.health !== "healthy").length}</b></div></article>
         </div>
-        <div className="model-pool-layout">
-        <section className="card model-list-card">
-        <div className="section-head">
-          <div><p>{t("models.desc")}</p></div>
-          <div className="actions"><button onClick={() => void probeAll()}>{t("models.probeAll")}</button><button className="primary" onClick={() => { setWorkspace("models"); setEditing(null); setDraft(blankRoute()); setCatalogBatch(false); setRouteEditorOpen(true); }}>{t("models.add")}</button></div>
-        </div>
-        <div className="filter-grid model-filters">
-          <label>{t("models.filterProvider")}<select aria-label={t("models.filterProvider")} value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}>
-            <option value="all">{t("models.filterAllProviders")}</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
-          </select></label>
-          <label>{t("models.filterStatus")}<select aria-label={t("models.filterStatus")} value={healthFilter} onChange={(event) => setHealthFilter(event.target.value)}>
-            <option value="all">{t("models.filterAllStatuses")}</option><option value="healthy">{t("models.filterHealthy")}</option><option value="attention">{t("models.filterAttention")}</option>
-          </select></label>
-          <label>{t("models.filterCapability")}<select aria-label={t("models.filterCapability")} value={capabilityFilter} onChange={(event) => setCapabilityFilter(event.target.value)}>
-            <option value="all">{t("models.filterAllCapabilities")}</option>{capabilityOptions.map((capability) => <option key={capability} value={capability}>{capability}</option>)}
-          </select></label>
-        </div>
-        <div className="table-wrap"><table data-testid="model-routes"><thead><tr><th>#</th><th>{t("common.model")}</th><th>{t("common.provider")}</th><th>{t("common.capability")}</th><th>{t("common.pricePerMillion")}</th><th>{t("common.runtimeStatus")}</th><th>{t("common.catalogStatus")}</th><th>{t("common.actions")}</th></tr></thead>
-          <tbody>{filteredRoutes.map((route) => <tr key={route.id} className={selectedRoute?.id === route.id ? "selected-route" : ""} onClick={() => setSelectedRouteId(route.id)}>
-            {(() => { const index = ordered.findIndex((item) => item.id === route.id); return <>
-            <td>{route.priority}</td>
-            <td><b>{route.display_name || route.remote_model}</b><small>{route.remote_model}</small></td>
-            <td>{route.provider_name}</td>
-            <td>{route.capabilities.map((cap) => <span className="tag" key={cap}>{cap}</span>)}</td>
-            <td>{route.pricing.input_per_million == null && route.pricing.output_per_million == null ? "—" : `${route.pricing.currency} ${route.pricing.input_per_million ?? "?"} / ${route.pricing.output_per_million ?? "?"}`}</td>
-            <td>
-              <span className={`badge ${!route.enabled ? "muted-badge" : route.health === "healthy" ? "ok" : "warn"}`}>{status(route.enabled ? route.health : "disabled")}</span>
-              {route.health_detail?.last_error_detail && <small title={route.health_detail.last_error_detail}>{route.health_detail.last_error_detail}</small>}
-            </td>
-            <td><span className={`badge ${route.catalog_status === "published" ? "ok" : "muted-badge"}`}>{status(route.catalog_status)}</span></td>
-            <td><div className="actions">
-              <button onClick={() => void move(index, -1)}>↑</button><button onClick={() => void move(index, 1)}>↓</button>
-              {splitCatalogModelNames(route.remote_model).length > 1 && <button onClick={() => void splitRouteModels(route)}>{t("models.splitModels")}</button>}
-              <button onClick={() => edit(route)}>{t("common.edit")}</button><button onClick={() => void mutate(route, "probe")}>{t("common.probe")}</button>
-              <button onClick={() => void mutate(route, "toggle")}>{route.enabled ? t("common.disable") : t("common.enable")}</button>
-              <button className="danger" onClick={() => void mutate(route, "delete")}>{t("common.delete")}</button>
-            </div></td>
-            </>; })()}
-          </tr>)}{!filteredRoutes.length && <tr><td colSpan={8} className="empty">{ordered.length ? t("models.noFilterResults") : t("models.empty")}</td></tr>}</tbody>
-        </table></div>
-        </section>
 
-        <aside className="card model-inspector">
-          {selectedRoute ? <>
-            <div className="inspector-head">
-              <div><h2>{t("models.detailTitle")}</h2></div>
-              <button onClick={() => edit(selectedRoute)}>{t("common.edit")}</button>
+        <div className="model-pool-layout">
+          <section className="card model-list-card">
+            <div className="model-toolbar">
+              <label className="model-search">
+                <span aria-hidden="true">⌕</span>
+                <input aria-label={t("models.searchPlaceholder")} placeholder={t("models.searchPlaceholder")} value={modelSearch} onChange={(event) => setModelSearch(event.target.value)} />
+              </label>
+              <label className="model-filter-field"><span>Provider</span><select aria-label={t("models.filterProvider")} value={providerFilter} onChange={(event) => setProviderFilter(event.target.value)}>
+                <option value="all">{t("models.filterAllProviders")}</option>{providers.map((provider) => <option key={provider.id} value={provider.id}>{provider.name}</option>)}
+              </select></label>
+              <label className="model-filter-field"><span>{t("models.filterCapability")}</span><select aria-label={t("models.filterCapability")} value={capabilityFilter} onChange={(event) => setCapabilityFilter(event.target.value)}>
+                <option value="all">{t("models.filterAllCapabilities")}</option>{capabilityOptions.map((capability) => <option key={capability} value={capability}>{capability}</option>)}
+              </select></label>
+              <label className="model-filter-field"><span>{t("models.filterStatus")}</span><select aria-label={t("models.filterStatus")} value={healthFilter} onChange={(event) => setHealthFilter(event.target.value)}>
+                <option value="all">{t("models.filterAllStatuses")}</option><option value="healthy">{t("models.filterHealthy")}</option><option value="attention">{t("models.filterAttention")}</option>
+              </select></label>
+              <label className="model-filter-field model-sort-field"><span>{t("models.sortLabel")}</span><select aria-label={t("models.sortLabel")} value={sortMode} onChange={(event) => setSortMode(event.target.value as "priority" | "name" | "latency")}>
+                <option value="priority">{t("models.sortDefault")}</option><option value="name">{t("models.sortName")}</option><option value="latency">{t("models.sortLatency")}</option>
+              </select></label>
+              <button className="primary model-add-button" onClick={() => { setWorkspace("models"); setEditing(null); setDraft(blankRoute()); setCatalogBatch(false); setRouteEditorOpen(true); }}>＋ {t("models.add")}</button>
+              <button className="model-probe-button" onClick={() => void probeAll()}>ϟ {t("models.probeAll")}</button>
             </div>
-            <div className="inspector-identity">
-              <span className="provider-avatar">{selectedRoute.provider_name.slice(0, 2).toUpperCase()}</span>
-              <div><h2>{selectedRoute.display_name || selectedRoute.remote_model}</h2><small>{selectedRoute.id}</small></div>
-              <span className={`badge ${selectedRoute.enabled && selectedRoute.health === "healthy" ? "ok" : selectedRoute.enabled ? "warn" : "muted-badge"}`}>{status(selectedRoute.enabled ? selectedRoute.health : "disabled")}</span>
-            </div>
-            <div className="cap-line">{selectedRoute.capabilities.map((cap) => <span className="tag" key={cap}>{cap}</span>)}</div>
-            <div className="kv-mini">
-              <div><span>{t("common.provider")}</span><b>{selectedRoute.provider_name}</b></div>
-              <div><span>{t("common.model")}</span><b>{selectedRoute.remote_model}</b></div>
-              <div><span>{t("models.priority")}</span><b>{selectedRoute.priority}</b></div>
-              <div><span>{t("common.pricePerMillion")}</span><b>{selectedRoute.pricing.input_per_million == null && selectedRoute.pricing.output_per_million == null ? "—" : `${selectedRoute.pricing.currency} ${selectedRoute.pricing.input_per_million ?? "?"} / ${selectedRoute.pricing.output_per_million ?? "?"}`}</b></div>
-              <div><span>{t("common.runtimeStatus")}</span><b>{status(selectedRoute.health)}</b></div>
-            </div>
-            <div className="connection-box">
-              <h3>{t("models.connectionStatus")}</h3>
-              <div className="kv-mini">
-                <div><span>{t("common.baseUrl")}</span><b>{providers.find((provider) => provider.id === selectedRoute.provider_id)?.base_url ?? "—"}</b></div>
-                <div><span>{t("common.latency")}</span><b>{selectedRoute.health_detail?.last_total_ms == null ? "—" : `${selectedRoute.health_detail.last_total_ms} ms`}</b></div>
+
+            <div className="table-wrap model-table-wrap"><table data-testid="model-routes"><thead><tr>
+              <th>{t("common.model")}</th><th>Provider</th><th>{t("common.capability")}</th><th>{t("models.contextWindow")}</th>
+              <th>{t("models.priceInputOutput")}</th><th>{t("common.latency")}</th><th>{t("common.status")}</th><th>{t("common.actions")}</th>
+            </tr></thead>
+              <tbody>{visibleRoutes.map((route) => {
+                const index = ordered.findIndex((item) => item.id === route.id);
+                const latency = route.health_detail?.last_total_ms;
+                const bundled = splitCatalogModelNames(route.remote_model).length > 1;
+                return <tr key={route.id} className={selectedRoute?.id === route.id ? "selected-route" : ""} onClick={() => setSelectedRouteId(route.id)}>
+                  <td><b>{route.display_name || route.remote_model}</b>{route.display_name && <small>{route.remote_model}</small>}</td>
+                  <td><span className="provider-cell"><ProviderGlyph name={route.provider_name} /><span>{route.provider_name}</span></span></td>
+                  <td><div className="capability-cell">{route.capabilities.slice(0, 2).map((cap) => <span className="tag" key={cap}>{cap}</span>)}</div></td>
+                  <td>{formatContextWindow(route)}</td>
+                  <td>{routePrice(route)}</td>
+                  <td>{latency == null ? "—" : latency >= 1000 ? `${(latency / 1000).toFixed(1)} s` : `${Math.round(latency)} ms`}</td>
+                  <td><div className="model-status-cell">
+                    <button className={`model-toggle ${route.enabled ? "on" : ""}`} aria-label={route.enabled ? t("common.disable") : t("common.enable")} onClick={(event) => { event.stopPropagation(); void mutate(route, "toggle"); }}><i /></button>
+                    <span className={`model-health ${!route.enabled ? "disabled" : route.health === "healthy" ? "healthy" : "attention"}`}><i />{status(route.enabled ? route.health : "disabled")}</span>
+                  </div></td>
+                  <td><div className="model-row-actions">
+                    {bundled && <button onClick={(event) => { event.stopPropagation(); void splitRouteModels(route); }}>{t("models.splitModels")}</button>}
+                    <button onClick={(event) => { event.stopPropagation(); edit(route); }}>{t("common.edit")}</button>
+                    <button onClick={(event) => { event.stopPropagation(); void mutate(route, "probe"); }}>{t("common.probe")}</button>
+                    <details onClick={(event) => event.stopPropagation()}><summary aria-label={t("common.actions")}>···</summary><div>
+                      <button onClick={() => edit(route)}>{t("common.edit")}</button>
+                      <button onClick={() => void mutate(route, "toggle")}>{route.enabled ? t("common.disable") : t("common.enable")}</button>
+                      <button className="danger" onClick={() => void mutate(route, "delete")}>{t("common.delete")}</button>
+                    </div></details>
+                  </div></td>
+                </tr>;
+              })}{!filteredRoutes.length && <tr><td colSpan={8} className="empty">{ordered.length ? t("models.noFilterResults") : t("models.empty")}</td></tr>}</tbody>
+            </table></div>
+
+            <div className="model-table-footer">
+              <span>{t("models.records", { count: filteredRoutes.length })}</span>
+              <div className="model-pagination">
+                <button disabled={modelPage <= 1} onClick={() => setModelPage((page) => Math.max(1, page - 1))}>‹</button>
+                {Array.from({ length: Math.min(modelPageCount, 3) }, (_, index) => index + 1).map((page) => <button key={page} className={page === modelPage ? "active" : ""} onClick={() => setModelPage(page)}>{page}</button>)}
+                <button disabled={modelPage >= modelPageCount} onClick={() => setModelPage((page) => Math.min(modelPageCount, page + 1))}>›</button>
               </div>
+              <span className="page-size">{modelPageSize} {t("models.perPage")}</span>
             </div>
-            <h3>{t("models.quickActions")}</h3>
-            <div className="quick-actions">
-              <button onClick={() => void mutate(selectedRoute, "probe")}>▷ {t("common.probe")}</button>
-              <button onClick={() => edit(selectedRoute)}>{t("common.edit")}</button>
-              <button className="danger" onClick={() => void mutate(selectedRoute, "toggle")}>{selectedRoute.enabled ? t("common.disable") : t("common.enable")}</button>
-              <button className="danger" onClick={() => void mutate(selectedRoute, "delete")}>{t("common.delete")}</button>
-            </div>
-          </> : <p className="empty">{t("models.empty")}</p>}
-        </aside>
+          </section>
+
+          <aside className="model-side-column">
+            <article className="card model-inspector">
+              {selectedRoute ? <>
+                <div className="inspector-head">
+                  <h2>{t("models.detailTitle")}</h2>
+                  <button className="inspector-edit" onClick={() => edit(selectedRoute)}>✎ {t("common.edit")}</button>
+                </div>
+                <div className="inspector-identity">
+                  <ProviderGlyph name={selectedRoute.provider_name} />
+                  <div><h2>{selectedRoute.display_name || selectedRoute.remote_model}</h2><small>ID: {selectedRoute.id}</small></div>
+                  <span className={`badge ${selectedRoute.enabled && selectedRoute.health === "healthy" ? "ok" : selectedRoute.enabled ? "warn" : "muted-badge"}`}>{status(selectedRoute.enabled ? selectedRoute.health : "disabled")}</span>
+                </div>
+                <div className="kv-mini model-detail-kv">
+                  <div><span>{t("models.displayName")}</span><b>{selectedRoute.display_name || selectedRoute.remote_model}</b></div>
+                  <div><span>{t("models.remoteModel")}</span><b>{selectedRoute.remote_model}</b></div>
+                  <div><span>{t("common.provider")}</span><b className="provider-detail-value"><ProviderGlyph name={selectedRoute.provider_name} />{selectedRoute.provider_name}</b></div>
+                  <div><span>{t("models.priority")}</span><b>{selectedRoute.priority}</b></div>
+                  <div><span>{t("common.capability")}</span><b className="cap-line">{selectedRoute.capabilities.map((cap) => <span className="tag" key={cap}>{cap}</span>)}</b></div>
+                  <div><span>{t("models.contextWindow")}</span><b>{formatContextWindow(selectedRoute)}</b></div>
+                  <div><span>{t("models.priceInputOutput")}</span><b>{routePrice(selectedRoute)}</b></div>
+                  <div><span>{t("models.currentStatus")}</span><b className="detail-status"><i />{status(selectedRoute.enabled ? selectedRoute.health : "disabled")}</b></div>
+                </div>
+              </> : <p className="empty">{t("models.empty")}</p>}
+            </article>
+
+            {selectedRoute && <article className="card model-quick-card">
+              <h3>{t("models.quickActions")}</h3>
+              <div className="quick-actions">
+                <button onClick={() => void mutate(selectedRoute, "probe")}>▷ {t("models.runTest")}</button>
+                <button onClick={() => navigator.clipboard?.writeText(selectedRoute.id)}>▣ {t("models.copyModelId")}</button>
+                <button className="danger" onClick={() => void mutate(selectedRoute, "toggle")}>⊘ {selectedRoute.enabled ? t("common.disable") : t("common.enable")}</button>
+                <button className="danger" onClick={() => void mutate(selectedRoute, "delete")}>♲ {t("common.delete")}</button>
+              </div>
+            </article>}
+
+            {selectedRoute && <article className="card model-connection-card">
+              <div className="connection-title"><h3>{t("models.connectionStatus")}</h3><span className={`model-health ${selectedRoute.enabled && selectedRoute.health === "healthy" ? "healthy" : "attention"}`}><i />{selectedRoute.enabled && selectedRoute.health === "healthy" ? t("models.connectionHealthy") : status(selectedRoute.health)}</span></div>
+              <div className="connection-kv">
+                <div><span>API Base</span><b>{providers.find((provider) => provider.id === selectedRoute.provider_id)?.base_url ?? "—"}</b></div>
+                <div><span>{t("models.lastProbe")}</span><b>{selectedConnection?.timestamp ? new Date(selectedConnection.timestamp).toLocaleString() : "—"}</b></div>
+                <div><span>{t("models.responseTime")}</span><b>{selectedRoute.health_detail?.last_total_ms == null ? "—" : `${selectedRoute.health_detail.last_total_ms} ms`}</b></div>
+              </div>
+              <button className="connection-log-link" onClick={() => setWorkspace("logs")}>{t("models.connectionLogs")} →</button>
+            </article>}
+          </aside>
         </div>
 
         <section className="provider-strip card">
-          <div className="section-head"><div><h2>{t("models.providersTitle")}</h2><p>{t("models.providerAddDesc")}</p></div></div>
+          <div className="section-head">
+            <div><h2><span className="provider-heading-icon" aria-hidden="true">♮</span>{t("models.providersTitle")}</h2><p>{t("models.providersDesc")}</p></div>
+            <button className="provider-view-all" onClick={() => setWorkspace("providers")}>{t("models.viewAllProviders")} →</button>
+          </div>
           <div className="provider-strip-grid">
             {providers.slice(0, 5).map((provider) => {
               const providerRoutes = routesByProvider.get(provider.id) ?? [];
               const healthyCount = providerRoutes.filter((route) => route.enabled && route.health === "healthy").length;
+              const connected = healthyCount > 0 || providerRoutes.some((route) => route.enabled);
               return <article className="provider-summary-card" key={provider.id}>
-                <header><span className="provider-dot">{provider.name.slice(0, 1).toUpperCase()}</span><b>{provider.name}</b></header>
-                <small>{providerRoutes.length} · {healthyCount}/{providerRoutes.length || 0} {status("healthy")}</small>
+                <header><ProviderGlyph name={provider.name} /><div><b>{provider.name}</b><span className={`provider-connection ${connected ? "ok" : "muted"}`}><i />{connected ? t("models.connectionHealthy") : t("common.disabled")}</span></div></header>
+                <strong>{t("models.modelsCount", { count: providerRoutes.length })}</strong>
                 <small>{provider.base_url}</small>
               </article>;
             })}

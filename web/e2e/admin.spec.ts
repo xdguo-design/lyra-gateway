@@ -74,9 +74,9 @@ test("model list filters routes by provider", async ({ page }) => {
   await page.getByRole("button", { name: "EN", exact: true }).click();
   const models = page.getByRole("tabpanel", { name: "Models" });
   const table = models.getByRole("table");
-  const firstProvider = await table.locator("tbody tr").first().locator("td").nth(2).innerText();
+  const firstProvider = await table.locator("tbody tr").first().locator("td").nth(1).innerText();
   await models.getByLabel("Provider filter").selectOption({ label: firstProvider });
-  const visibleProviders = await table.locator("tbody tr td:nth-child(3)").allInnerTexts();
+  const visibleProviders = await table.locator("tbody tr td:nth-child(2)").allInnerTexts();
   expect(visibleProviders.length).toBeGreaterThan(0);
   expect(visibleProviders.every((provider) => provider === firstProvider)).toBe(true);
 });
