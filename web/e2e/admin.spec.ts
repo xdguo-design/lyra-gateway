@@ -255,7 +255,7 @@ test("routing shows each candidate model health and enabled state", async ({ pag
   }));
   await page.goto("/admin/#/routing");
   await page.getByRole("button", { name: "EN", exact: true }).click();
-  const capability = page.getByRole("heading", { name: "chat", exact: true }).locator("..");
+  const capability = page.getByRole("heading", { name: /Chat.*chat/i }).locator("xpath=ancestor::article");
   await expect(capability).toContainText("Healthy");
   await expect(capability).toContainText("Rate Limited");
   await expect(capability).toContainText("Disabled");
@@ -310,8 +310,8 @@ test("React admin boots, navigates, switches language, and has no runtime errors
   await expect(page.getByRole("heading", { level: 1, name: "Model Pool" })).toBeVisible();
   await expect(page).toHaveTitle("Model Pool · FreeLLM Gateway");
 
-  await page.getByRole("button", { name: "Token Usage" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Token Usage" })).toBeVisible();
+  await page.getByRole("button", { name: "Usage" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Usage Statistics" })).toBeVisible();
   await expect(page.getByText("Monthly Quotas")).toBeVisible();
 
   await page.getByRole("button", { name: "Routing" }).click();

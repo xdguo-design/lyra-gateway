@@ -57,7 +57,8 @@ export function Shell({
   onToken: (token: string) => void;
 }) {
   const { language, setLanguage, t } = useI18n();
-  const titleKey = items.find(([key]) => key === view)?.[1] ?? "nav.overview";
+  const navTitleKey = items.find(([key]) => key === view)?.[1] ?? "nav.overview";
+  const titleKey = view === "usage" ? "usage.title" : view === "routing" ? "routing.title" : navTitleKey;
   const title = t(titleKey);
   const searchRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
@@ -148,6 +149,7 @@ export function Shell({
         <section className="page-title-strip">
           <div className="page-hero-copy"><h1>{title}</h1><p>{t(subtitleKeys[view])}</p></div>
           {view === "overview" && <div className="page-hero-aside"><span>{t("overview.heroAsideLine1")}<br />{t("overview.heroAsideLine2")}</span><i /></div>}
+          {view === "routing" && <div className="page-hero-aside"><span>{t("routing.heroAsideLine1")}<br />{t("routing.heroAsideLine2")}</span><i /></div>}
           <div className="page-hero-mountains" aria-hidden="true"><i /><i /><i /></div>
         </section>
         {children}
