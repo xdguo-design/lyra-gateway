@@ -626,7 +626,7 @@ main:has(.view-settings) .page-hero-aside{top:24px!important}
 .settings-runtime-card,.service-status-card{padding:14px 16px!important}
 .runtime-title{margin-bottom:6px!important}
 .runtime-list{display:grid;gap:0}
-.runtime-list>[data-testid="settings-diagnostics"]{display:contents}
+.runtime-list>[data-testid="settings-diagnostics"]{display:grid;gap:0}
 .runtime-row{min-height:30px;display:grid!important;grid-template-columns:150px minmax(0,1fr) 24px!important;align-items:center!important;gap:8px!important;padding:2px 0!important;border:0!important}
 .runtime-row>span{font-size:9px;color:#213b5c!important;font-weight:600}
 .runtime-row code{height:24px;display:flex;align-items:center;padding:0 8px!important;border-radius:4px!important;background:#eef2f6!important;color:#536d8f!important;font-size:8.8px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

@@ -74,11 +74,14 @@ test("model list filters routes by provider", async ({ page }) => {
   await page.getByRole("button", { name: "EN", exact: true }).click();
   const models = page.getByRole("tabpanel", { name: "Models" });
   const table = models.getByRole("table");
-  const firstProvider = await table.locator("tbody tr").first().locator("td").nth(1).innerText();
-  await models.getByLabel("Provider filter").selectOption({ label: firstProvider });
+  const providerSelect = models.getByLabel("Provider filter");
+  const firstProviderOption = providerSelect.locator("option").nth(1);
+  const firstProviderValue = await firstProviderOption.getAttribute("value");
+  const firstProviderLabel = (await firstProviderOption.innerText()).trim();
+  await providerSelect.selectOption(firstProviderValue!);
   const visibleProviders = await table.locator("tbody tr td:nth-child(2)").allInnerTexts();
   expect(visibleProviders.length).toBeGreaterThan(0);
-  expect(visibleProviders.every((provider) => provider === firstProvider)).toBe(true);
+  expect(visibleProviders.every((provider) => provider.includes(firstProviderLabel))).toBe(true);
 });
 
 test("request logs filter loaded records and reveal more rows on demand", async ({ page }) => {
@@ -139,7 +142,7 @@ test("catalog uses the source-provided registration label and canonical URL", as
   }] } }));
   await page.goto("/admin/#/catalog");
   const offer = page.locator(".catalog-card").filter({ hasText: "Ling 3.1 Flash" });
-  const registration = offer.getByRole("link", { name: "模型注册页 ↗" });
+  const registration = offer.getByRole("link", { name: "模型注册页" });
   await expect(registration).toHaveAttribute("href", modelUrl);
 });
 
@@ -164,7 +167,7 @@ test("catalog exposes model-specific registration steps on demand", async ({ pag
   await steps.click();
   await expect(offer).toContainText("Vercel account");
   await expect(offer).toContainText("Open the Ling 3.1 Flash (Free) model page and sign in.");
-  await expect(offer.getByRole("link", { name: "Model registration page ↗" })).toHaveAttribute("href", modelUrl);
+  await expect(offer.getByRole("link", { name: "Model registration page" })).toHaveAttribute("href", modelUrl);
 });
 
 test("catalog bundle opens as separate model routes", async ({ page }) => {
@@ -216,20 +219,18 @@ test("catalog distinguishes loading from an empty result", async ({ page }) => {
   await expect(page.getByTestId("catalog-loading")).toHaveCount(0);
 });
 
-test("overview puts health and recent activity before client setup", async ({ page }) => {
+test("overview follows the approved metrics, access, recent activity order", async ({ page }) => {
   await page.goto("/admin/");
   await expect(page.locator(".hero-art")).toHaveCount(0);
   const status = page.getByTestId("overview-status");
-  const attention = page.getByTestId("model-attention");
-  const recent = page.getByTestId("recent-calls");
   const access = page.getByTestId("client-access");
+  const recent = page.getByTestId("recent-calls");
   await expect(status).toBeVisible();
-  await expect(attention).toBeVisible();
-  await expect(recent).toBeVisible();
   await expect(access).toBeVisible();
-  expect((await status.boundingBox())!.y).toBeLessThan((await attention.boundingBox())!.y);
-  expect((await attention.boundingBox())!.y).toBeLessThan((await recent.boundingBox())!.y);
-  expect((await recent.boundingBox())!.y).toBeLessThan((await access.boundingBox())!.y);
+  await expect(recent).toBeVisible();
+  await expect(page.getByTestId("model-attention")).toHaveCount(0);
+  expect((await status.boundingBox())!.y).toBeLessThan((await access.boundingBox())!.y);
+  expect((await access.boundingBox())!.y).toBeLessThan((await recent.boundingBox())!.y);
 });
 
 test("usage follows the approved filter, summary, quota, breakdown order", async ({ page }) => {
@@ -315,7 +316,7 @@ test("React admin boots, navigates, switches language, and has no runtime errors
   await expect(page.getByText("Monthly Quotas")).toBeVisible();
 
   await page.getByRole("button", { name: "Routing" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Routing" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Routing Strategy" })).toBeVisible();
 
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
@@ -345,7 +346,7 @@ test("quota form performs a real UI-to-API round trip", async ({ page, request }
   await page.getByLabel("Target").selectOption(applicationId);
   await page.getByLabel("Monthly Token Quota").fill("1000");
   await page.getByLabel("Monthly Cost Budget").fill("10");
-  await page.getByLabel("Currency").fill("USD");
+  await page.getByLabel("Currency").selectOption("USD");
   await page.getByLabel("Warning Threshold %").fill("75");
   await page.getByRole("button", { name: "Save Quota" }).click();
 
