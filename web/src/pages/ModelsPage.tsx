@@ -725,7 +725,7 @@ export function ModelsPage({
             </div>
 
             <div className="table-wrap model-table-wrap"><table data-testid="model-routes"><thead><tr>
-              <th>{t("common.model")}</th><th>Provider</th><th>{t("common.capability")}</th><th>{t("models.contextWindow")}</th>
+              <th>{t("common.model")}</th><th>{t("common.provider")}</th><th>{t("common.capability")}</th><th>{t("models.contextWindow")}</th>
               <th>{t("models.priceInputOutput")}</th><th>{t("common.latency")}</th><th>{t("common.status")}</th><th>{t("common.actions")}</th>
             </tr></thead>
               <tbody>{visibleRoutes.map((route) => {
@@ -806,7 +806,7 @@ export function ModelsPage({
             {selectedRoute && <article className="card model-connection-card">
               <div className="connection-title"><h3>{t("models.connectionStatus")}</h3><span className={`model-health ${selectedRoute.enabled && selectedRoute.health === "healthy" ? "healthy" : "attention"}`}><i />{selectedRoute.enabled && selectedRoute.health === "healthy" ? t("models.connectionHealthy") : status(selectedRoute.health)}</span></div>
               <div className="connection-kv">
-                <div><span>API Base</span><b>{providers.find((provider) => provider.id === selectedRoute.provider_id)?.base_url ?? "—"}</b></div>
+                <div><span>{t("common.apiBase")}</span><b>{providers.find((provider) => provider.id === selectedRoute.provider_id)?.base_url ?? "—"}</b></div>
                 <div><span>{t("models.lastProbe")}</span><b>{selectedConnection?.timestamp ? new Date(selectedConnection.timestamp).toLocaleString() : "—"}</b></div>
                 <div><span>{t("models.responseTime")}</span><b>{selectedRoute.health_detail?.last_total_ms == null ? "—" : `${selectedRoute.health_detail.last_total_ms} ms`}</b></div>
               </div>
