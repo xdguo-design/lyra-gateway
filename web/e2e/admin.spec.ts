@@ -122,7 +122,7 @@ test("catalog add opens the prefilled model form and focuses a missing endpoint"
       docsUrl: "https://example.test/docs", freeSummary: "Free tier", pool_status: { state: "not_added" } }] },
   }));
   await page.goto("/admin/#/catalog");
-  await page.getByRole("button", { name: "Configure and add to Model Pool" }).click();
+  await page.getByRole("button", { name: "Add to Model Pool" }).click();
   await expect(page).toHaveURL(/#\/models$/);
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue("example-chat");
   const customProvider = page.getByTestId("custom-provider");
@@ -176,7 +176,7 @@ test("catalog bundle opens as separate model routes", async ({ page }) => {
       register: "https://example.test/signup", pool_status: { state: "not_added" } }] },
   }));
   await page.goto("/admin/#/catalog");
-  await page.getByRole("button", { name: "Configure and add to Model Pool" }).click();
+  await page.getByRole("button", { name: "Add to Model Pool" }).click();
   await expect(page).toHaveURL(/#\/models$/);
   await expect(page.getByLabel("Model", { exact: true })).toHaveValue("chat-a");
   await expect(page.getByLabel("chat-a")).toBeChecked();
