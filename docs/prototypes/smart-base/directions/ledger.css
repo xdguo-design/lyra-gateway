@@ -1,0 +1,10 @@
+:root { --canvas:#f6f2e9; --rail:#eee9dd; --ink:#302a20; --quiet:#766c5d; --rule:#d6ccbb; --accent:#8b4b30; --on-accent:#fffaf2; --selected:#e4d7c2; --good:#486d4e; --warn:#a16424; --warn-bg:#f1e6d1; --danger:#a84035; --nav-radius:0; --button-radius:0; }
+body { font-family: Georgia, "Songti SC", "SimSun", serif; }
+.brand, nav, .metric label, .metric small, .provider-name small, .health, .latency, .models, .alert p, th, td, .crumb, .period, .demo-tag, button, .eyebrow, .footer-note, .section-head span, .rail-foot { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+h1 { font-family: Georgia, "Songti SC", "SimSun", serif; font-size: clamp(34px,3.6vw,49px); font-weight: 500; letter-spacing: -.055em; }
+.brandmark { border-radius: 50%; }
+.metrics { border-top: 2px solid var(--ink); }
+.metric strong { font-family: Georgia, "Songti SC", serif; font-size: 30px; font-weight: 500; }
+.section { border-top-width: 1px; }
+.provider { min-height: 70px; }
+.solid-button { font-weight: 650; }

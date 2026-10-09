@@ -1,0 +1,4 @@
+:root { --canvas:#f4f7f8; --rail:#eaf0f2; --ink:#172b34; --quiet:#60747b; --rule:#cbd8db; --accent:#176f70; --on-accent:#fff; --selected:#dbe9e6; --good:#267b60; --warn:#ae6812; --warn-bg:#f5ead8; --danger:#b44346; --nav-radius:3px; --button-radius:3px; }
+.brandmark { border-radius: 2px; }
+.metric strong { font-variant-numeric: tabular-nums; }
+.section-head { border-bottom: 0; }
